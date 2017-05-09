@@ -19,13 +19,117 @@ hba1c_withID <- merge(cleanHbA1cData, id_lookup, by.x = "LinkId", by.y = "LinkId
 diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE.csv", sep=",", header = TRUE, row.names = NULL)
 diceData$DICE_unix <- returnUnixDateTime(diceData$Date.attended.DICE)
 
-diceHbA1c <- merge(hba1c_withID, diceData)
+# combined DICE hba1c data
+diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
+diceHbA1cDT <- data.table(diceHbA1c)
+
+# file to find hba1c values for 
+findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
+  
+  # print(LinkId_value)
+  
+  firstSGLT2time <- firstSGLT2Prescription[1]
+  
+  firstWindowSeconds <- firstWindowMonths * (60*60*24*(365.25/12))
+  IntervalSeconds <- IntervalMonths * (60*60*24*(365.25/12))
+  
+  hb_sub <- cleanHbA1cDataDT[LinkId == LinkId_value]
+  
+  # find 1st hba1c
+  hb_sub$firstDiff <- hb_sub$dateplustime1 - firstSGLT2time
+  first_hb_sub <- hb_sub[firstDiff <= 0 & firstDiff > (0 - firstWindowSeconds)]
+  if (nrow(first_hb_sub) > 0) {firstHb <- first_hb_sub[sqrt(firstDiff^2) == min(sqrt(firstDiff^2))]$timeSeriesDataPoint}
+  if (nrow(first_hb_sub) == 0) {firstHb = 0}
+  
+  # find 2nd hba1c
+  hb_sub$secondDiff <- hb_sub$dateplustime1 - (firstSGLT2time + IntervalSeconds)
+  second_hb_sub <- hb_sub[sqrt(secondDiff^2) < (firstWindowSeconds/2)]
+  if (nrow(second_hb_sub) > 0) {secondHb <- second_hb_sub[sqrt(firstDiff^2) == min(sqrt(firstDiff^2))]$timeSeriesDataPoint}
+  if (nrow(second_hb_sub) == 0) {secondHb = 0}
+  
+  returnList <- list(firstHb, secondHb)
+  
+  return(returnList)
+  
+}
+
+diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 6), by=.(LinkId)]
+diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
+
+# flag single row per ID for merging back with combination data
+diceHbA1cDT$index <- seq(1, nrow(diceHbA1cDT), 1)
+diceHbA1cDT[, c("firstRow") :=  ifelse(index == min(index), 1, 0), by=.(LinkId)]
+
+diceHbA1cDT_perID <- diceHbA1cDT[firstRow == 1]
+
+analysisSet_6months <- diceHbA1cDT_perID[include == 1]
+analysisSet_9months <- diceHbA1cDT_perID[include == 1]
+analysisSet_12months <- diceHbA1cDT_perID[include == 1]
+analysisSet_18months <- diceHbA1cDT_perID[include == 1]
+
+reportingFrame <- as.data.frame(matrix(nrow = 0), ncol = 5))
+colnames(reportingFrame) <- c("months", "n", "median", "IQR1", "IQR2")
+
+for (i in seq(3, 36, 1)) {
+  
+  print(i)
+
+    # file to find hba1c values for 
+    findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
+      
+      # print(LinkId_value)
+      
+      firstSGLT2time <- firstSGLT2Prescription[1]
+      
+      firstWindowSeconds <- firstWindowMonths * (60*60*24*(365.25/12))
+      IntervalSeconds <- IntervalMonths * (60*60*24*(365.25/12))
+      
+      hb_sub <- cleanHbA1cDataDT[LinkId == LinkId_value]
+      
+      # find 1st hba1c
+      hb_sub$firstDiff <- hb_sub$dateplustime1 - firstSGLT2time
+      first_hb_sub <- hb_sub[firstDiff <= 0 & firstDiff > (0 - firstWindowSeconds)]
+      if (nrow(first_hb_sub) > 0) {firstHb <- first_hb_sub[sqrt(firstDiff^2) == min(sqrt(firstDiff^2))]$timeSeriesDataPoint}
+      if (nrow(first_hb_sub) == 0) {firstHb = 0}
+      
+      # find 2nd hba1c
+      hb_sub$secondDiff <- hb_sub$dateplustime1 - (firstSGLT2time + IntervalSeconds)
+      second_hb_sub <- hb_sub[sqrt(secondDiff^2) < (firstWindowSeconds/2)]
+      if (nrow(second_hb_sub) > 0) {secondHb <- second_hb_sub[sqrt(firstDiff^2) == min(sqrt(firstDiff^2))]$timeSeriesDataPoint}
+      if (nrow(second_hb_sub) == 0) {secondHb = 0}
+      
+      returnList <- list(firstHb, secondHb)
+      
+      return(returnList)
+      
+    }
+    
+    diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, i), by=.(LinkId)]
+    diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
+    
+    # flag single row per ID for merging back with combination data
+    diceHbA1cDT$index <- seq(1, nrow(diceHbA1cDT), 1)
+    diceHbA1cDT[, c("firstRow") :=  ifelse(index == min(index), 1, 0), by=.(LinkId)]
+
+diceHbA1cDT_perID <- diceHbA1cDT[firstRow == 1]
+analysisSet <- diceHbA1cDT_perID[include == 1]
+
+medianDiff <- quantile(analysisSet$secondHbA1c)[3] - quantile(analysisSet$firstHbA1c)[3]
+IQR1_diff  <- quantile(analysisSet$secondHbA1c)[2] - quantile(analysisSet$firstHbA1c)[2]
+IQR2_diff  <- quantile(analysisSet$secondHbA1c)[4] - quantile(analysisSet$firstHbA1c)[4]
+
+reportSet <- data.frame(i, nrow(analysisSet), medianDiff, IQR1_diff, IQR2_diff)
+colnames(reportSet) <- c("months", "n", "median", "IQR1", "IQR2")
+
+reportingFrame <- rbind(reportingFrame, reportSet)
 
 
+}
 
-
-
-
+analysisSet_6months <- diceHbA1cDT_perID[include == 1]
+analysisSet_9months <- diceHbA1cDT_perID[include == 1]
+analysisSet_12months <- diceHbA1cDT_perID[include == 1]
+analysisSet_18months <- diceHbA1cDT_perID[include == 1]
 
 
 
