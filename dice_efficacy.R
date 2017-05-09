@@ -70,18 +70,21 @@ analysisSet_18months <- diceHbA1cDT_perID[include == 1]
 reportingFrame <- as.data.frame(matrix(nrow = 0, ncol = 5))
 colnames(reportingFrame) <- c("months", "n", "median", "IQR1", "IQR2")
 
-for (i in seq(3, 48, 2)) {
+increment = 4
+
+for (i in seq(3, 48, increment)) {
   
   print(i)
 
     # file to find hba1c values for 
-    findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
+    findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, secondWindowMonths, IntervalMonths) {
       
       # print(LinkId_value)
       
       firstSGLT2time <- firstSGLT2Prescription[1]
       
       firstWindowSeconds <- firstWindowMonths * (60*60*24*(365.25/12))
+      secondWindowSeconds <- secondWindowMonths * (60*60*24*(365.25/12))
       IntervalSeconds <- IntervalMonths * (60*60*24*(365.25/12))
       
       hb_sub <- cleanHbA1cDataDT[LinkId == LinkId_value]
@@ -94,7 +97,7 @@ for (i in seq(3, 48, 2)) {
       
       # find 2nd hba1c
       hb_sub$secondDiff <- hb_sub$dateplustime1 - (firstSGLT2time + IntervalSeconds)
-      second_hb_sub <- hb_sub[sqrt(secondDiff^2) < (firstWindowSeconds/2)]
+      second_hb_sub <- hb_sub[sqrt(secondDiff^2) < (secondWindowSeconds/2)]
       if (nrow(second_hb_sub) > 0) {secondHb <- second_hb_sub[sqrt(firstDiff^2) == min(sqrt(firstDiff^2))]$timeSeriesDataPoint}
       if (nrow(second_hb_sub) == 0) {secondHb = 0}
       
@@ -104,7 +107,7 @@ for (i in seq(3, 48, 2)) {
       
     }
     
-    diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 4, i), by=.(LinkId)]
+    diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, increment, i), by=.(LinkId)]
     diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
     
     # flag single row per ID for merging back with combination data
@@ -128,9 +131,12 @@ reportingFrame <- rbind(reportingFrame, reportSet)
 
 plot(reportingFrame$months, reportingFrame$n)
 
-plot(reportingFrame$months, reportingFrame$median)
+plot(reportingFrame$months, reportingFrame$median, pch = 16, cex = 2)
+fit <- lm(reportingFrame$median ~ reportingFrame$month)
+abline(fit, col = "red", lwd = 3)
+
 lines(reportingFrame$months, reportingFrame$median)
-lines(reportingFrame$months, reportingFrame$IQR1)
+lines(reportingFrame$months, reportingFrame$IQR1, col = "red")
 
 analysisSet_6months <- diceHbA1cDT_perID[include == 1]
 analysisSet_9months <- diceHbA1cDT_perID[include == 1]
