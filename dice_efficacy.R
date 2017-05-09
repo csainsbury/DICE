@@ -67,10 +67,10 @@ analysisSet_9months <- diceHbA1cDT_perID[include == 1]
 analysisSet_12months <- diceHbA1cDT_perID[include == 1]
 analysisSet_18months <- diceHbA1cDT_perID[include == 1]
 
-reportingFrame <- as.data.frame(matrix(nrow = 0), ncol = 5))
+reportingFrame <- as.data.frame(matrix(nrow = 0, ncol = 5))
 colnames(reportingFrame) <- c("months", "n", "median", "IQR1", "IQR2")
 
-for (i in seq(3, 36, 1)) {
+for (i in seq(3, 48, 2)) {
   
   print(i)
 
@@ -104,7 +104,7 @@ for (i in seq(3, 36, 1)) {
       
     }
     
-    diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, i), by=.(LinkId)]
+    diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 4, i), by=.(LinkId)]
     diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
     
     # flag single row per ID for merging back with combination data
@@ -125,6 +125,12 @@ reportingFrame <- rbind(reportingFrame, reportSet)
 
 
 }
+
+plot(reportingFrame$months, reportingFrame$n)
+
+plot(reportingFrame$months, reportingFrame$median)
+lines(reportingFrame$months, reportingFrame$median)
+lines(reportingFrame$months, reportingFrame$IQR1)
 
 analysisSet_6months <- diceHbA1cDT_perID[include == 1]
 analysisSet_9months <- diceHbA1cDT_perID[include == 1]
