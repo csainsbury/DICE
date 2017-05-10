@@ -23,6 +23,7 @@ diceData$DICE_unix <- returnUnixDateTime(diceData$Date.attended.DICE)
 diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
 diceHbA1cDT <- data.table(diceHbA1c)
 
+#####
 # simple plot
 diceHbA1cDT$timeRelativeToDICE <- diceHbA1cDT$dateplustime1 - diceHbA1cDT$DICE_unix
 diceHbA1cDT$timeRelativeToDICE_years <- diceHbA1cDT$timeRelativeToDICE / (60*60*24*365.25)
@@ -46,6 +47,33 @@ for (j in seq(1, length(idList), 1)) {
 }
 
 abline(v = 0, col = rgb(1, 0, 0, 0.5, maxColorValue = 1))
+
+#####
+# hba1c variability pre/post
+# set pre/post times
+
+idList <- unique(diceHbA1cDT$LinkId)
+
+for (j in seq(1, length(idList), 1)) {
+  plotSet <- diceHbA1cDT[LinkId == idList[j]]
+  preSet <- plotSet[timeRelativeToDICE_years > -2 & timeRelativeToDICE_years <= 0]
+  postSet <- plotSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 2]
+  
+  IQR_pre <- quantile(preSet$timeSeriesDataPoint)[4] - quantile(preSet$timeSeriesDataPoint)[2]
+  IQR_post <- quantile(postSet$timeSeriesDataPoint)[4] - quantile(postSet$timeSeriesDataPoint)[2]
+  
+  plot_x <- c(0, 1)
+  plot_y <- c(IQR_pre, IQR_post)
+
+  if (j == 1) {
+    plot(plot_x, plot_y, xlim = c(-0.5, 1.5), ylim = c(0,20), cex = sqrt(nrow(preSet)))
+    lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
+  }
+  if (j > 1) {
+    points(plot_x, plot_y, cex = sqrt(nrow(postSet)))
+    lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
+  }
+}
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
