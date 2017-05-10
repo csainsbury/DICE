@@ -23,6 +23,30 @@ diceData$DICE_unix <- returnUnixDateTime(diceData$Date.attended.DICE)
 diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
 diceHbA1cDT <- data.table(diceHbA1c)
 
+# simple plot
+diceHbA1cDT$timeRelativeToDICE <- diceHbA1cDT$dateplustime1 - diceHbA1cDT$DICE_unix
+diceHbA1cDT$timeRelativeToDICE_years <- diceHbA1cDT$timeRelativeToDICE / (60*60*24*365.25)
+
+boxplot(diceHbA1cDT$timeSeriesDataPoint ~ cut(diceHbA1cDT$timeRelativeToDICE_years, breaks = seq(-1,5,1)), varwidth = T, ylim = c(55,85))
+
+idList <- unique(diceHbA1cDT$LinkId)
+
+for (j in seq(1, length(idList), 1)) {
+  plotSet <- diceHbA1cDT[LinkId == idList[j]]
+  plotSet <- plotSet[order(plotSet$timeRelativeToDICE_years), ]
+  
+  if (j == 1) {
+    plot(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, cex = 0, xlim = c(-10, 8), ylim = c(40, 120))
+    lines(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, col = rgb(0, 0, 0, 0.05, maxColorValue = 1))
+  }
+  if (j > 1) {
+    points(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, cex = 0)
+    lines(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, col = rgb(0, 0, 0, 0.05, maxColorValue = 1))
+  }
+}
+
+abline(v = 0, col = rgb(1, 0, 0, 0.5, maxColorValue = 1))
+
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
   
@@ -72,7 +96,7 @@ colnames(reportingFrame) <- c("months", "n", "median", "IQR1", "IQR2")
 
 increment = 4
 
-for (i in seq(3, 48, increment)) {
+for (i in seq(4, 48, increment)) {
   
   print(i)
 
