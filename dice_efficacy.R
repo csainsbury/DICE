@@ -7,6 +7,8 @@ returnUnixDateTime<-function(date) {
 }
 
 demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
+demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
+
 id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <- c("LinkId", "PatId")
 
 #import hba1c data
@@ -54,6 +56,10 @@ abline(v = 0, col = rgb(1, 0, 0, 0.5, maxColorValue = 1))
 
 idList <- unique(diceHbA1cDT$LinkId)
 
+report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 5))
+colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post")
+report_IQR_Frame$id <- idList
+
 for (j in seq(1, length(idList), 1)) {
   plotSet <- diceHbA1cDT[LinkId == idList[j]]
   preSet <- plotSet[timeRelativeToDICE_years > -2 & timeRelativeToDICE_years <= 0]
@@ -66,14 +72,61 @@ for (j in seq(1, length(idList), 1)) {
   plot_y <- c(IQR_pre, IQR_post)
 
   if (j == 1) {
-    plot(plot_x, plot_y, xlim = c(-0.5, 1.5), ylim = c(0,20), cex = sqrt(nrow(preSet)))
+    plot(plot_x, plot_y, xlim = c(-0.5, 1.5), ylim = c(0,40), cex = sqrt(nrow(preSet)))
     lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
   }
   if (j > 1) {
     points(plot_x, plot_y, cex = sqrt(nrow(postSet)))
     lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
   }
+  
+  report_IQR_Frame$IQR_pre[j] <- IQR_pre
+  report_IQR_Frame$IQR_post[j] <- IQR_post
+  report_IQR_Frame$n_pre[j] <- nrow(preSet)
+  report_IQR_Frame$n_post[j] <- nrow(postSet)
+  
 }
+
+#####
+# admissions pre/post
+# load admissions
+T1_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T1DM.csv")
+T1_admissions_sub<-data.frame(T1_admissions$ID,T1_admissions$dateplustime1,T1_admissions$admissionNumberFlag,T1_admissions$nCBGperAdmission,T1_admissions$admissionDurationDays, T1_admissions$IQR, T1_admissions$diagnosisDateUnix); colnames(T1_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
+
+T2_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T2DM.csv")
+T2_admissions_sub<-data.frame(T2_admissions$ID,T2_admissions$dateplustime1,T2_admissions$admissionNumberFlag,T2_admissions$nCBGperAdmission,T2_admissions$admissionDurationDays, T2_admissions$IQR, T2_admissions$diagnosisDateUnix); colnames(T2_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
+
+admissions<-rbind(T1_admissions_sub,T2_admissions_sub)
+admissionsDT<-data.table(admissions)
+
+admissionIdList <- unique(diceHbA1cDT$PatId)
+
+report_admission_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 5))
+colnames(report_admission_Frame) <- c("id", "adm_pre", "adm_post", "admIQR_pre", "admIQR_post")
+report_admission_Frame$id <- idList
+
+for (jj in seq(1, length(admissionIdList), 1)) {
+  admissionsSet <- admissionsDT[ID == admissionIdList[jj]]
+  diceDate <- diceHbA1cDT[PatId == admissionIdList[jj]]$DICE_unix[1]
+  
+  admissionsSet$timeRelativeToDICE <- admissionsSet$dateplustime1 - diceDate
+  admissionsSet$timeRelativeToDICE_years <- admissionsSet$timeRelativeToDICE / (60*60*24*365.25)
+  
+  preSet <- admissionsSet[timeRelativeToDICE_years > -1 & timeRelativeToDICE_years <= 0]
+  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 1]
+  
+  report_admission_Frame$adm_pre[jj] <- nrow(preSet)
+  report_admission_Frame$adm_post[jj] <- nrow(postSet)
+  
+    IQR_preSet <- preSet[nCBGperAdmission > 1]
+    IQR_postSet <- postSet[nCBGperAdmission > 1]
+    
+    if (nrow(IQR_preSet) > 0) {}
+    
+  
+}
+
+
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
