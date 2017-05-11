@@ -1,6 +1,5 @@
 library(data.table)
 
-
 returnUnixDateTime<-function(date) {
   returnVal<-as.numeric(as.POSIXct(date, format="%d/%m/%Y", tz="GMT"))
   return(returnVal)
@@ -8,18 +7,32 @@ returnUnixDateTime<-function(date) {
 
 demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
 demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
+demogALLDT <- data.table(demogALL)
+diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "diagnosis_unix")
 
 id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <- c("LinkId", "PatId")
 
 #import hba1c data
 cleanHbA1cData <- read.csv("~/R/GlCoSy/SD_workingSource/hba1cDTclean.csv", sep=",", header = TRUE, row.names = NULL)
 cleanHbA1cData$timeSeriesDataPoint <- cleanHbA1cData$hba1cNumeric
+cleanHbA1cDataDT <- data.table(cleanHbA1cData)
 
 hba1c_withID <- merge(cleanHbA1cData, id_lookup, by.x = "LinkId", by.y = "LinkId")
 
 # import DICE data
 diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE.csv", sep=",", header = TRUE, row.names = NULL)
 diceData$DICE_unix <- returnUnixDateTime(diceData$Date.attended.DICE)
+
+# add diagnosis data
+diceData <- merge(diceData, diagnosis_id, by.x = "CHI", by.y = "PatId")
+
+            ###########
+            # choose whether to subset by diagnosis date:
+            diceData$timeToDICEfromDIagnosis <- diceData$DICE_unix - diceData$diagnosis_unix
+            diceData$timeToDICEfromDIagnosis_years <- diceData$timeToDICEfromDIagnosis / (60*60*24*365.25)
+            
+            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 1.5)
+            ###########
 
 # combined DICE hba1c data
 diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
@@ -30,7 +43,7 @@ diceHbA1cDT <- data.table(diceHbA1c)
 diceHbA1cDT$timeRelativeToDICE <- diceHbA1cDT$dateplustime1 - diceHbA1cDT$DICE_unix
 diceHbA1cDT$timeRelativeToDICE_years <- diceHbA1cDT$timeRelativeToDICE / (60*60*24*365.25)
 
-boxplot(diceHbA1cDT$timeSeriesDataPoint ~ cut(diceHbA1cDT$timeRelativeToDICE_years, breaks = seq(-1,5,1)), varwidth = T, ylim = c(55,85))
+x <- boxplot(diceHbA1cDT$timeSeriesDataPoint ~ cut(diceHbA1cDT$timeRelativeToDICE_years, breaks = seq(-1,5,1)), varwidth = T, ylim = c(55,85))
 
 idList <- unique(diceHbA1cDT$LinkId)
 
@@ -87,6 +100,10 @@ for (j in seq(1, length(idList), 1)) {
   
 }
 
+print(quantile(report_IQR_Frame$IQR_pre, na.rm = T))
+print(quantile(report_IQR_Frame$IQR_post, na.rm = T))
+wilcox.test(report_IQR_Frame$IQR_pre, report_IQR_Frame$IQR_post)
+
 #####
 # admissions pre/post
 # load admissions
@@ -121,12 +138,11 @@ for (jj in seq(1, length(admissionIdList), 1)) {
     IQR_preSet <- preSet[nCBGperAdmission > 1]
     IQR_postSet <- postSet[nCBGperAdmission > 1]
     
-    if (nrow(IQR_preSet) > 0) {}
-    
-  
 }
 
-
+quantile(report_admission_Frame$adm_pre)
+quantile(report_admission_Frame$adm_post)
+wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post)
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
@@ -158,7 +174,7 @@ findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMon
   
 }
 
-diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 6), by=.(LinkId)]
+diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 12), by=.(LinkId)]
 diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
 
 # flag single row per ID for merging back with combination data
@@ -172,12 +188,23 @@ analysisSet_9months <- diceHbA1cDT_perID[include == 1]
 analysisSet_12months <- diceHbA1cDT_perID[include == 1]
 analysisSet_18months <- diceHbA1cDT_perID[include == 1]
 
+    print(nrow(analysisSet_6months))
+    print(quantile(analysisSet_6months$firstHbA1c))
+    print(quantile(analysisSet_6months$secondHbA1c))
+    wilcox.test(analysisSet_6months$firstHbA1c, analysisSet_6months$secondHbA1c)
+    
+    print(nrow(analysisSet_12months))
+    print(quantile(analysisSet_12months$firstHbA1c))
+    print(quantile(analysisSet_12months$secondHbA1c))
+    wilcox.test(analysisSet_12months$firstHbA1c, analysisSet_12months$secondHbA1c)
+
+
 reportingFrame <- as.data.frame(matrix(nrow = 0, ncol = 5))
 colnames(reportingFrame) <- c("months", "n", "median", "IQR1", "IQR2")
 
-increment = 4
+increment = 3
 
-for (i in seq(4, 48, increment)) {
+for (i in seq(3, 24, increment)) {
   
   print(i)
 
@@ -239,14 +266,6 @@ plot(reportingFrame$months, reportingFrame$n)
 plot(reportingFrame$months, reportingFrame$median, pch = 16, cex = 2)
 fit <- lm(reportingFrame$median ~ reportingFrame$month)
 abline(fit, col = "red", lwd = 3)
-
-lines(reportingFrame$months, reportingFrame$median)
-lines(reportingFrame$months, reportingFrame$IQR1, col = "red")
-
-analysisSet_6months <- diceHbA1cDT_perID[include == 1]
-analysisSet_9months <- diceHbA1cDT_perID[include == 1]
-analysisSet_12months <- diceHbA1cDT_perID[include == 1]
-analysisSet_18months <- diceHbA1cDT_perID[include == 1]
 
 
 
