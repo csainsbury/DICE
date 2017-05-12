@@ -31,7 +31,7 @@ diceData <- merge(diceData, diagnosis_id, by.x = "CHI", by.y = "PatId")
             diceData$timeToDICEfromDIagnosis <- diceData$DICE_unix - diceData$diagnosis_unix
             diceData$timeToDICEfromDIagnosis_years <- diceData$timeToDICEfromDIagnosis / (60*60*24*365.25)
             
-            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 1.5)
+            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 2)
             ###########
 
 # combined DICE hba1c data
@@ -129,8 +129,8 @@ for (jj in seq(1, length(admissionIdList), 1)) {
   admissionsSet$timeRelativeToDICE <- admissionsSet$dateplustime1 - diceDate
   admissionsSet$timeRelativeToDICE_years <- admissionsSet$timeRelativeToDICE / (60*60*24*365.25)
   
-  preSet <- admissionsSet[timeRelativeToDICE_years > -1 & timeRelativeToDICE_years <= 0]
-  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 1]
+  preSet <- admissionsSet[timeRelativeToDICE_years > -0.5 & timeRelativeToDICE_years <= 0]
+  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 0.5]
   
   report_admission_Frame$adm_pre[jj] <- nrow(preSet)
   report_admission_Frame$adm_post[jj] <- nrow(postSet)
@@ -142,7 +142,7 @@ for (jj in seq(1, length(admissionIdList), 1)) {
 
 quantile(report_admission_Frame$adm_pre)
 quantile(report_admission_Frame$adm_post)
-wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post)
+wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post, paired = T)
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
@@ -191,7 +191,7 @@ analysisSet_18months <- diceHbA1cDT_perID[include == 1]
     print(nrow(analysisSet_6months))
     print(quantile(analysisSet_6months$firstHbA1c))
     print(quantile(analysisSet_6months$secondHbA1c))
-    wilcox.test(analysisSet_6months$firstHbA1c, analysisSet_6months$secondHbA1c)
+    wilcox.test(analysisSet_6months$firstHbA1c, analysisSet_6months$secondHbA1c, paired = T)
     
     print(nrow(analysisSet_12months))
     print(quantile(analysisSet_12months$firstHbA1c))
