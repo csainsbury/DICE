@@ -5,6 +5,21 @@ returnUnixDateTime<-function(date) {
   return(returnVal)
 }
 
+## NOTE 11/5/17
+# for hba1c variability need to take wide window pre/post, given the low frequency of hba1c measurement. 2y pre vs 2y post. for other measures, benefits are seen on a shorter timescale - 6m for peak efficacy of hba1c reduction and 1y pre/post for reduction in admissions.
+
+# load admissions
+T1_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T1DM.csv")
+T1_admissions_sub<-data.frame(T1_admissions$ID,T1_admissions$dateplustime1,T1_admissions$admissionNumberFlag,T1_admissions$nCBGperAdmission,T1_admissions$admissionDurationDays, T1_admissions$IQR, T1_admissions$diagnosisDateUnix); colnames(T1_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
+
+T2_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T2DM.csv")
+T2_admissions_sub<-data.frame(T2_admissions$ID,T2_admissions$dateplustime1,T2_admissions$admissionNumberFlag,T2_admissions$nCBGperAdmission,T2_admissions$admissionDurationDays, T2_admissions$IQR, T2_admissions$diagnosisDateUnix); colnames(T2_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
+
+admissions<-rbind(T1_admissions_sub,T2_admissions_sub)
+admissionsDT<-data.table(admissions)
+
+lastAdmssionDate <- max(admissionsDT$dateplustime1)
+
 demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
 demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
 demogALLDT <- data.table(demogALL)
@@ -31,7 +46,7 @@ diceData <- merge(diceData, diagnosis_id, by.x = "CHI", by.y = "PatId")
             diceData$timeToDICEfromDIagnosis <- diceData$DICE_unix - diceData$diagnosis_unix
             diceData$timeToDICEfromDIagnosis_years <- diceData$timeToDICEfromDIagnosis / (60*60*24*365.25)
             
-            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 2)
+            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 1.5 )
             ###########
 
 # combined DICE hba1c data
@@ -39,7 +54,7 @@ diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
 diceHbA1cDT <- data.table(diceHbA1c)
 
 #####
-# simple plot
+# simple plots
 diceHbA1cDT$timeRelativeToDICE <- diceHbA1cDT$dateplustime1 - diceHbA1cDT$DICE_unix
 diceHbA1cDT$timeRelativeToDICE_years <- diceHbA1cDT$timeRelativeToDICE / (60*60*24*365.25)
 
@@ -102,25 +117,20 @@ for (j in seq(1, length(idList), 1)) {
 
 print(quantile(report_IQR_Frame$IQR_pre, na.rm = T))
 print(quantile(report_IQR_Frame$IQR_post, na.rm = T))
-wilcox.test(report_IQR_Frame$IQR_pre, report_IQR_Frame$IQR_post)
+wilcox.test(report_IQR_Frame$IQR_pre, report_IQR_Frame$IQR_post, paired = T)
 
 #####
 # admissions pre/post
-# load admissions
-T1_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T1DM.csv")
-T1_admissions_sub<-data.frame(T1_admissions$ID,T1_admissions$dateplustime1,T1_admissions$admissionNumberFlag,T1_admissions$nCBGperAdmission,T1_admissions$admissionDurationDays, T1_admissions$IQR, T1_admissions$diagnosisDateUnix); colnames(T1_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
 
-T2_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T2DM.csv")
-T2_admissions_sub<-data.frame(T2_admissions$ID,T2_admissions$dateplustime1,T2_admissions$admissionNumberFlag,T2_admissions$nCBGperAdmission,T2_admissions$admissionDurationDays, T2_admissions$IQR, T2_admissions$diagnosisDateUnix); colnames(T2_admissions_sub)<-c("ID","dateplustime1","admissionNumberFlag","nCBGperAdmission","admissionDurationDays", "IQR", "diagnosisDateUnix")
+# admissionsDT<-admissionsDT[nCBGperAdmission>2]
 
-admissions<-rbind(T1_admissions_sub,T2_admissions_sub)
-admissionsDT<-data.table(admissions)
+windowOfInterestYears <- 0.5
+windowOfInterestSeconds <- windowOfInterestYears * (60*60*24*365.25)
+admissionIdList <- unique(diceHbA1cDT[DICE_unix < (lastAdmssionDate - windowOfInterestSeconds)]$PatId)
 
-admissionIdList <- unique(diceHbA1cDT$PatId)
-
-report_admission_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 5))
+report_admission_Frame <- as.data.frame(matrix(nrow = length(admissionIdList), ncol = 5))
 colnames(report_admission_Frame) <- c("id", "adm_pre", "adm_post", "admIQR_pre", "admIQR_post")
-report_admission_Frame$id <- idList
+report_admission_Frame$id <- admissionIdList
 
 for (jj in seq(1, length(admissionIdList), 1)) {
   admissionsSet <- admissionsDT[ID == admissionIdList[jj]]
@@ -129,8 +139,8 @@ for (jj in seq(1, length(admissionIdList), 1)) {
   admissionsSet$timeRelativeToDICE <- admissionsSet$dateplustime1 - diceDate
   admissionsSet$timeRelativeToDICE_years <- admissionsSet$timeRelativeToDICE / (60*60*24*365.25)
   
-  preSet <- admissionsSet[timeRelativeToDICE_years > -0.5 & timeRelativeToDICE_years <= 0]
-  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 0.5]
+  preSet <- admissionsSet[timeRelativeToDICE_years > -windowOfInterestYears & timeRelativeToDICE_years <= 0]
+  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < windowOfInterestYears]
   
   report_admission_Frame$adm_pre[jj] <- nrow(preSet)
   report_admission_Frame$adm_post[jj] <- nrow(postSet)
@@ -142,7 +152,16 @@ for (jj in seq(1, length(admissionIdList), 1)) {
 
 quantile(report_admission_Frame$adm_pre)
 quantile(report_admission_Frame$adm_post)
+
+sum(report_admission_Frame$adm_pre)
+sum(report_admission_Frame$adm_post)
+
+atLeastOneAdmissionPre <- ifelse(report_admission_Frame$adm_pre > 0, 1, 0)
+atLeastOneAdmissionPost <- ifelse(report_admission_Frame$adm_post > 0, 1, 0)
+
 wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post, paired = T)
+wilcox.test(atLeastOneAdmissionPre, atLeastOneAdmissionPost, paired = T)
+prop.test(c(sum(atLeastOneAdmissionPre), sum(atLeastOneAdmissionPost)), c(length(admissionIdList), length(admissionIdList)))
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
@@ -174,7 +193,7 @@ findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMon
   
 }
 
-diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 12), by=.(LinkId)]
+diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 6), by=.(LinkId)]
 diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
 
 # flag single row per ID for merging back with combination data
