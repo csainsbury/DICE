@@ -193,7 +193,7 @@ findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMon
   
 }
 
-diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 6), by=.(LinkId)]
+diceHbA1cDT[, c("firstHbA1c", "secondHbA1c") :=  findHbA1cValues(LinkId, DICE_unix, 6, 18), by=.(LinkId)]
 diceHbA1cDT$include <- ifelse(diceHbA1cDT$firstHbA1c > 0 & diceHbA1cDT$secondHbA1c >0, 1, 0)
 
 # flag single row per ID for merging back with combination data
@@ -212,10 +212,33 @@ analysisSet_18months <- diceHbA1cDT_perID[include == 1]
     print(quantile(analysisSet_6months$secondHbA1c))
     wilcox.test(analysisSet_6months$firstHbA1c, analysisSet_6months$secondHbA1c, paired = T)
     
+      analysisSet_6months_58plus <- subset(analysisSet_6months, firstHbA1c >= 58)
+      print(nrow(analysisSet_6months_58plus))
+      print(quantile(analysisSet_6months_58plus$firstHbA1c))
+      print(quantile(analysisSet_6months_58plus$secondHbA1c))
+      wilcox.test(analysisSet_6months_58plus$firstHbA1c, analysisSet_6months_58plus$secondHbA1c, paired = T)
+    
     print(nrow(analysisSet_12months))
     print(quantile(analysisSet_12months$firstHbA1c))
     print(quantile(analysisSet_12months$secondHbA1c))
     wilcox.test(analysisSet_12months$firstHbA1c, analysisSet_12months$secondHbA1c)
+    
+      analysisSet_12months_58plus <- subset(analysisSet_12months, firstHbA1c >= 58)
+      print(nrow(analysisSet_12months_58plus))
+      print(quantile(analysisSet_12months_58plus$firstHbA1c))
+      print(quantile(analysisSet_12months_58plus$secondHbA1c))
+      wilcox.test(analysisSet_12months_58plus$firstHbA1c, analysisSet_12months_58plus$secondHbA1c)
+      
+    print(nrow(analysisSet_18months))
+    print(quantile(analysisSet_18months$firstHbA1c))
+    print(quantile(analysisSet_18months$secondHbA1c))
+    wilcox.test(analysisSet_18months$firstHbA1c, analysisSet_18months$secondHbA1c)
+    
+      analysisSet_18months_58plus <- subset(analysisSet_18months, firstHbA1c >= 58)
+      print(nrow(analysisSet_18months_58plus))
+      print(quantile(analysisSet_18months_58plus$firstHbA1c))
+      print(quantile(analysisSet_18months_58plus$secondHbA1c))
+      wilcox.test(analysisSet_18months_58plus$firstHbA1c, analysisSet_18months_58plus$secondHbA1c)
 
 
 reportingFrame <- as.data.frame(matrix(nrow = 0, ncol = 5))
