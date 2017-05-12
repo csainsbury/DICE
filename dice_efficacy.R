@@ -124,7 +124,7 @@ wilcox.test(report_IQR_Frame$IQR_pre, report_IQR_Frame$IQR_post, paired = T)
 
 # admissionsDT<-admissionsDT[nCBGperAdmission>2]
 
-windowOfInterestYears <- 0.5
+windowOfInterestYears <- 0.75
 windowOfInterestSeconds <- windowOfInterestYears * (60*60*24*365.25)
 admissionIdList <- unique(diceHbA1cDT[DICE_unix < (lastAdmssionDate - windowOfInterestSeconds)]$PatId)
 
