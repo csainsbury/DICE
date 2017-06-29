@@ -1,5 +1,7 @@
 library(data.table)
 
+set.seed(43)
+ 
 returnUnixDateTime<-function(date) {
   returnVal<-as.numeric(as.POSIXct(date, format="%d/%m/%Y", tz="GMT"))
   return(returnVal)
@@ -29,14 +31,36 @@ id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <-
 
 #import hba1c data
 cleanHbA1cData <- read.csv("~/R/GlCoSy/SD_workingSource/hba1cDTclean.csv", sep=",", header = TRUE, row.names = NULL)
-cleanHbA1cData$timeSeriesDataPoint <- cleanHbA1cData$hba1cNumeric
 cleanHbA1cDataDT <- data.table(cleanHbA1cData)
+cleanHbA1cDataDT[, c("lastA1cDate") := max(dateplustime1) , by=.(LinkId)]
 
-hba1c_withID <- merge(cleanHbA1cData, id_lookup, by.x = "LinkId", by.y = "LinkId")
+hba1c_withID <- merge(cleanHbA1cDataDT, id_lookup, by = "LinkId")
+lastA1cFrame <- data.frame(hba1c_withID$LinkId, hba1c_withID$lastA1cDate); colnames(lastA1cFrame) <- c("LinkId", "lastA1cDate")
+
+diagnosisExclusionYears <- 3
+testWindow <- 3
+hba1cWindow <- 3
+exclusionWindowMonths <- 3
 
 # import DICE data
-diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE.csv", sep=",", header = TRUE, row.names = NULL)
-diceData$DICE_unix <- returnUnixDateTime(diceData$Date.attended.DICE)
+# diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE_combined.csv", sep=",", header = TRUE, row.names = NULL)
+diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE_annotated.csv", sep=",", header = TRUE, row.names = NULL)
+diceData$DICE_unix <- returnUnixDateTime(diceData$Date)
+
+# import pump data
+pumpList <- read.csv("~/R/GlCoSy/SDsource/pumpList.csv", sep=",", header = TRUE, row.names = NULL)
+pumpList$pumpDate_unix <- returnUnixDateTime(pumpList$pumpdate)
+
+# merge DICE and pump - cut all pumps in use before end of test window post DICE/DAFNE
+diceData_pump <- merge(diceData, pumpList, by.x = "CHI", by.y = "chi", all.x = T)
+diceData_pump$useFlag <- ifelse(diceData_pump$pumpDate_unix - diceData_pump$DICE_unix < (testWindow *60*60*24*365.25), 1, 0)
+diceData_pump$useFlag[is.na(diceData_pump$useFlag)] <- 1
+diceData <- subset(diceData_pump, useFlag == 1)
+
+# remove dups - use first only
+diceDataDT <- data.table(diceData)
+diceDataDT[, c("firstCourse") := ifelse(DICE_unix == min(DICE_unix), 1, 0) , by=.(CHI)]
+diceData <- as.data.frame(diceDataDT[firstCourse == 1])
 
 # add diagnosis data
 diceData <- merge(diceData, diagnosis_id, by.x = "CHI", by.y = "PatId")
@@ -46,19 +70,163 @@ diceData <- merge(diceData, diagnosis_id, by.x = "CHI", by.y = "PatId")
             diceData$timeToDICEfromDIagnosis <- diceData$DICE_unix - diceData$diagnosis_unix
             diceData$timeToDICEfromDIagnosis_years <- diceData$timeToDICEfromDIagnosis / (60*60*24*365.25)
             
-            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= 1.5 )
+            diceData <- subset(diceData, timeToDICEfromDIagnosis_years >= diagnosisExclusionYears)
             ###########
 
 # combined DICE hba1c data
 diceHbA1c <- merge(hba1c_withID, diceData, by.x = "PatId", by.y = "CHI")
 diceHbA1cDT <- data.table(diceHbA1c)
 
-#####
-# simple plots
+# ensure all have at least one hba1c within 6 months of the end of the followup window
+diceHbA1cDT$lastA1cThreshold <- ((diceHbA1cDT$DICE_unix + (testWindow * (60*60*24*365.25))) - hba1cWindow * (60*60*24*365.25))
+diceHbA1cDT <- diceHbA1cDT[lastA1cDate > lastA1cThreshold]
+
 diceHbA1cDT$timeRelativeToDICE <- diceHbA1cDT$dateplustime1 - diceHbA1cDT$DICE_unix
 diceHbA1cDT$timeRelativeToDICE_years <- diceHbA1cDT$timeRelativeToDICE / (60*60*24*365.25)
 
-x <- boxplot(diceHbA1cDT$timeSeriesDataPoint ~ cut(diceHbA1cDT$timeRelativeToDICE_years, breaks = seq(-1,5,1)), varwidth = T, ylim = c(55,85))
+diceHbA1cDT_courseComp <- diceHbA1cDT
+
+# exclude hba1c values in window around course
+diceHbA1cDT <- diceHbA1cDT[timeRelativeToDICE_years < (-(exclusionWindowMonths / 12)) | timeRelativeToDICE_years > (exclusionWindowMonths / 12)]
+
+# limit to those with an hba1c >=58 prior to course
+average_hba1c_beforeCourse <- function(timeRelativeToDICE_years, hba1cNumeric) {
+  flagInWindowPrior <- ifelse(timeRelativeToDICE_years < 0 & timeRelativeToDICE_years > (0 - testWindow), 1, 0)
+  averageHba1c <- quantile(hba1cNumeric[flagInWindowPrior == 1])[3]
+  return(averageHba1c)
+}
+
+diceHbA1cDT[, c("av_hba1c_priorWindow") := average_hba1c_beforeCourse(timeRelativeToDICE_years, hba1cNumeric) , by=.(LinkId)]
+
+diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 58]
+
+# dice vs dafne
+# diceHbA1cDT <- diceHbA1cDT[Course == 'dice']
+# diceHbA1cDT <- diceHbA1cDT[Course == 'dafne']
+
+average_hba1c_atTimePoint <- function(timeRelativeToDICE_years, hba1cNumeric, timePointMonths, windowMonths) {
+  timePointYears <- timePointMonths / 12
+  windowYears <- windowMonths / 12
+  
+  flagInWindow <- ifelse(timeRelativeToDICE_years > (timePointYears - (windowYears / 2)) & timeRelativeToDICE_years < (timePointYears + (windowYears / 2)), 1, 0)
+  averageHba1c <- quantile(hba1cNumeric[flagInWindow == 1], na.rm = T)[3]
+  
+  return(averageHba1c)
+}
+
+diceHbA1cDT[, c("singleRowFlag") := ifelse(dateplustime1 == min(dateplustime1),1 , 0) , by=.(LinkId)]
+
+
+interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) {
+
+  
+  reportingFrame <- as.data.frame(matrix(nrow = length(inputTimes), ncol = 5))
+  colnames(reportingFrame) <- c('interval', 'n', 'median_pre', 'median_post', 'pval')
+  
+  for (j in seq(1, length(inputTimes), 1)) {
+    
+    reportingFrame$interval[j] <- inputTimes[j]
+  
+  print(paste('month_', inputTimes[j], sep=''))
+    
+  test_DT[, c('testCol') := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, inputTimes[j], windowMonths) , by=.(LinkId)]
+  test_DT$testCol[is.na(test_DT$testCol)] <- 0
+  
+  print(nrow(test_DT[singleRowFlag == 1 & testCol > 0]))
+    reportingFrame$n[j] <- nrow(test_DT[singleRowFlag == 1 & testCol > 0])
+    
+  print(quantile(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow))
+    reportingFrame$median_pre[j] <- quantile(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow)[3]
+  
+  print(quantile(test_DT[singleRowFlag == 1 & testCol > 0]$testCol))
+    reportingFrame$median_post[j] <- quantile(test_DT[singleRowFlag == 1 & testCol > 0]$testCol)[3]
+    
+  print(wilcox.test(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & testCol > 0]$testCol, paired = T))
+  
+  test <- wilcox.test(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & testCol > 0]$testCol, paired = T)
+  
+    reportingFrame$pval[j] <- test$p.val
+  
+  }
+  
+  reportingFrame$median_diff <- reportingFrame$median_post - reportingFrame$median_pre
+  plot(reportingFrame$interval, reportingFrame$median_diff, xlab = 'months', ylab = 'difference median hba1c', cex = 2, pch = 16, col = ifelse(reportingFrame$pval < 0.05, 'red', 'black')); lines(reportingFrame$interval, reportingFrame$median_diff)
+  abline(0, 1)
+  
+  print(reportingFrame)
+  
+  return(reportingFrame)
+  
+  
+}
+
+interval_difference <- function(test_DT) {
+  
+  print('month_6')
+  test_DT[, c("month_6") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 6, 6) , by=.(LinkId)]
+  test_DT$month_6[is.na(test_DT$month_6)] <- 0
+  print(nrow(test_DT[singleRowFlag == 1 & month_6 > 0]))
+  print(quantile(test_DT[singleRowFlag == 1 & month_6 > 0]$av_hba1c_priorWindow))
+  print(quantile(test_DT[singleRowFlag == 1 & month_6 > 0]$month_6))
+  print(wilcox.test(test_DT[singleRowFlag == 1 & month_6 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_6 > 0]$month_6, paired = T))
+  
+  print('month_12')
+  test_DT[, c("month_12") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 12, 6) , by=.(LinkId)]
+  test_DT$month_12[is.na(test_DT$month_12)] <- 0
+  print(nrow(test_DT[singleRowFlag == 1 & month_12 > 0]))
+  print(quantile(test_DT[singleRowFlag == 1 & month_12 > 0]$av_hba1c_priorWindow))
+  print(quantile(test_DT[singleRowFlag == 1 & month_12 > 0]$month_12))
+  print(wilcox.test(test_DT[singleRowFlag == 1 & month_12 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_12 > 0]$month_12, paired = T))
+  
+  print('month_24')
+  test_DT[, c("month_24") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 24, 6) , by=.(LinkId)]
+  test_DT$month_24[is.na(test_DT$month_24)] <- 0
+  print(nrow(test_DT[singleRowFlag == 1 & month_24 > 0]))
+  print(quantile(test_DT[singleRowFlag == 1 & month_24 > 0]$av_hba1c_priorWindow))
+  print(quantile(test_DT[singleRowFlag == 1 & month_24 > 0]$month_24))
+  print(wilcox.test(test_DT[singleRowFlag == 1 & month_24 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_24 > 0]$month_24, paired = T))
+  
+  print('month_36')
+  test_DT[, c("month_36") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 36, 6) , by=.(LinkId)]
+  test_DT$month_36[is.na(test_DT$month_36)] <- 0
+  print(nrow(test_DT[singleRowFlag == 1 & month_36 > 0]))
+  print(quantile(test_DT[singleRowFlag == 1 & month_36 > 0]$av_hba1c_priorWindow))
+  print(quantile(test_DT[singleRowFlag == 1 & month_36 > 0]$month_24))
+  print(wilcox.test(test_DT[singleRowFlag == 1 & month_36 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_36 > 0]$month_36, paired = T))
+  
+}
+
+diceDT <- diceHbA1cDT[Course == 'dice']
+dafneDT <- diceHbA1cDT[Course == 'dafne']
+
+interval_difference(diceHbA1cDT)
+
+interval_difference(diceDT)
+interval_difference(dafneDT)
+
+diceFrame <- interval_difference_variableTime(diceDT, seq(3, 60, 3), 3)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(3, 60, 3), 3)
+
+
+#####
+
+# simple plots
+
+x <- boxplot(diceHbA1cDT$hba1cNumeric ~ cut(diceHbA1cDT$timeRelativeToDICE_years, breaks = seq(-3,3,0.2)), varwidth = T, ylim = c(55,85))
+
+#dice vs dafne
+dice <- boxplot(diceHbA1cDT_courseComp[Course == 'dice']$hba1cNumeric ~ cut(diceHbA1cDT_courseComp[Course == 'dice']$timeRelativeToDICE_years, breaks = seq(-3,3,0.5)), varwidth = T, ylim = c(55,85))
+dafne <- boxplot(diceHbA1cDT_courseComp[Course == 'dafne']$hba1cNumeric ~ cut(diceHbA1cDT_courseComp[Course == 'dafne']$timeRelativeToDICE_years, breaks = seq(-3,3,0.5)), varwidth = T, ylim = c(55,85))
+
+plot(dice$stats[3, ], col = "red", ylim = c(50, 90)); lines(dice$stats[3, ], col = "red")
+  points(dice$stats[2, ], col = "red", cex = 0); lines(dice$stats[2, ], col = "red", lty = 3)
+  points(dice$stats[4, ], col = "red", cex = 0); lines(dice$stats[4, ], col = "red", lty = 3)
+  
+points(dafne$stats[3, ], col = "blue"); lines(dafne$stats[3, ], col = "blue")
+  points(dafne$stats[2, ], col = "blue", cex = 0); lines(dafne$stats[2, ], col = "blue", lty = 3)
+  points(dafne$stats[4, ], col = "blue", cex = 0); lines(dafne$stats[4, ], col = "blue", lty = 3)
+
+
 
 idList <- unique(diceHbA1cDT$LinkId)
 
@@ -67,7 +235,7 @@ for (j in seq(1, length(idList), 1)) {
   plotSet <- plotSet[order(plotSet$timeRelativeToDICE_years), ]
   
   if (j == 1) {
-    plot(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, cex = 0, xlim = c(-10, 8), ylim = c(40, 120))
+    plot(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, cex = 0, xlim = c(-5, 5), ylim = c(40, 120))
     lines(plotSet$timeRelativeToDICE_years, plotSet$timeSeriesDataPoint, col = rgb(0, 0, 0, 0.05, maxColorValue = 1))
   }
   if (j > 1) {
@@ -88,24 +256,45 @@ report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 5))
 colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post")
 report_IQR_Frame$id <- idList
 
+print(length(idList))
+
 for (j in seq(1, length(idList), 1)) {
-  plotSet <- diceHbA1cDT[LinkId == idList[j]]
-  preSet <- plotSet[timeRelativeToDICE_years > -2 & timeRelativeToDICE_years <= 0]
-  postSet <- plotSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < 2]
   
-  IQR_pre <- quantile(preSet$timeSeriesDataPoint)[4] - quantile(preSet$timeSeriesDataPoint)[2]
-  IQR_post <- quantile(postSet$timeSeriesDataPoint)[4] - quantile(postSet$timeSeriesDataPoint)[2]
+  #j = 76
+  
+  if (j %% 100 == 0) {print(j)}
+  
+  plotSet <- diceHbA1cDT[LinkId == idList[j]]
+  preSet <- plotSet[timeRelativeToDICE_years > (-testWindow) & timeRelativeToDICE_years < 0]
+  postSet <- plotSet[timeRelativeToDICE_years >= 0 & timeRelativeToDICE_years < testWindow]
+  
+    # randomly equalise post and pre N hba1c values
+    if (nrow(postSet) > nrow(preSet)) {
+      postSet$randomCol <- runif(nrow(postSet), 0, 1)
+      postSet <- postSet[order(postSet$randomCol), ]
+      postSet <- postSet[1 : nrow(preSet), ]
+    }
+  
+  # randomly equalise post and pre N hba1c values
+  if (nrow(preSet) > nrow(postSet)) {
+    preSet$randomCol <- runif(nrow(preSet), 0, 1)
+    preSet <- preSet[order(preSet$randomCol), ]
+    preSet <- preSet[1 : nrow(postSet), ]
+  }
+  
+  IQR_pre <- quantile(preSet$hba1cNumeric)[4] - quantile(preSet$hba1cNumeric)[2]
+  IQR_post <- quantile(postSet$hba1cNumeric)[4] - quantile(postSet$hba1cNumeric)[2]
   
   plot_x <- c(0, 1)
   plot_y <- c(IQR_pre, IQR_post)
 
   if (j == 1) {
-    plot(plot_x, plot_y, xlim = c(-0.5, 1.5), ylim = c(0,40), cex = sqrt(nrow(preSet)))
-    lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
+    # plot(plot_x, plot_y, xlim = c(-0.5, 1.5), ylim = c(0,10), cex = sqrt(nrow(preSet)))
+    # lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
   }
   if (j > 1) {
-    points(plot_x, plot_y, cex = sqrt(nrow(postSet)))
-    lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
+    # points(plot_x, plot_y, cex = sqrt(nrow(postSet)))
+    # lines(plot_x, plot_y, col = rgb(0, 0, 0, 0.2, maxColorValue = 1))
   }
   
   report_IQR_Frame$IQR_pre[j] <- IQR_pre
@@ -115,16 +304,24 @@ for (j in seq(1, length(idList), 1)) {
   
 }
 
+report_IQR_Frame <- subset(report_IQR_Frame, n_pre >1 & n_post >1)
+
 print(quantile(report_IQR_Frame$IQR_pre, na.rm = T))
 print(quantile(report_IQR_Frame$IQR_post, na.rm = T))
 wilcox.test(report_IQR_Frame$IQR_pre, report_IQR_Frame$IQR_post, paired = T)
+
+print(quantile(report_IQR_Frame$n_pre, na.rm = T))
+print(quantile(report_IQR_Frame$n_post, na.rm = T))
+wilcox.test(report_IQR_Frame$n_pre, report_IQR_Frame$n_post, paired = T)
+
+
 
 #####
 # admissions pre/post
 
 # admissionsDT<-admissionsDT[nCBGperAdmission>2]
 
-windowOfInterestYears <- 0.75
+windowOfInterestYears <- 3
 windowOfInterestSeconds <- windowOfInterestYears * (60*60*24*365.25)
 admissionIdList <- unique(diceHbA1cDT[DICE_unix < (lastAdmssionDate - windowOfInterestSeconds)]$PatId)
 
