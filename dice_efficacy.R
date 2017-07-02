@@ -8,7 +8,7 @@ returnUnixDateTime<-function(date) {
 }
 
 ## NOTE 11/5/17
-# for hba1c variability need to take wide window pre/post, given the low frequency of hba1c measurement. 2y pre vs 2y post. for other measures, benefits are seen on a shorter timescale - 6m for peak efficacy of hba1c reduction and 1y pre/post for reduction in admissions.
+# for hba1c variability need to take wide window pre/post, given the low frequency of hba1c measurement. 2y pre vs 2y post. for other measures, benefits are seen on a shorter timescale - 6m for peak efficacy of hba1c reduction and 1y pre/post for reduction in admissions. 
 
 # load admissions
 T1_admissions<-read.csv("~/R/GlCoSy/source/admissionDataDT_T1DM.csv")
