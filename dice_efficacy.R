@@ -38,9 +38,10 @@ hba1c_withID <- merge(cleanHbA1cDataDT, id_lookup, by = "LinkId")
 lastA1cFrame <- data.frame(hba1c_withID$LinkId, hba1c_withID$lastA1cDate); colnames(lastA1cFrame) <- c("LinkId", "lastA1cDate")
 
 diagnosisExclusionYears <- 3
-testWindow <- 3
+testWindow <- 4
 hba1cWindow <- 3
-exclusionWindowMonths <- 3
+exclusionWindowMonths <- 1.5
+priorHba1cWindowYears <- 1
 
 # import DICE data
 # diceData <- read.csv("~/R/GlCoSy/SDsource/diceDAFNE_combined.csv", sep=",", header = TRUE, row.names = NULL)
@@ -89,9 +90,9 @@ diceHbA1cDT_courseComp <- diceHbA1cDT
 # exclude hba1c values in window around course
 diceHbA1cDT <- diceHbA1cDT[timeRelativeToDICE_years < (-(exclusionWindowMonths / 12)) | timeRelativeToDICE_years > (exclusionWindowMonths / 12)]
 
-# limit to those with an hba1c >=58 prior to course
+# limit to those with an hba1c >=58 prior to course (av during period priorHba1cWindowYears)
 average_hba1c_beforeCourse <- function(timeRelativeToDICE_years, hba1cNumeric) {
-  flagInWindowPrior <- ifelse(timeRelativeToDICE_years < 0 & timeRelativeToDICE_years > (0 - testWindow), 1, 0)
+  flagInWindowPrior <- ifelse(timeRelativeToDICE_years < 0 & timeRelativeToDICE_years > (0 - priorHba1cWindowYears), 1, 0)
   averageHba1c <- quantile(hba1cNumeric[flagInWindowPrior == 1])[3]
   return(averageHba1c)
 }
@@ -204,9 +205,9 @@ interval_difference(diceHbA1cDT)
 interval_difference(diceDT)
 interval_difference(dafneDT)
 
-diceFrame <- interval_difference_variableTime(diceDT, seq(3, 60, 3), 3)
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(3, 60, 3), 3)
-
+allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
+diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 48, 6), 6)
 
 #####
 
@@ -250,23 +251,30 @@ abline(v = 0, col = rgb(1, 0, 0, 0.5, maxColorValue = 1))
 # hba1c variability pre/post
 # set pre/post times
 
-idList <- unique(diceHbA1cDT$LinkId)
+variabilityDT <- diceHbA1cDT
+variabilityDT <- diceHbA1cDT[Course == 'dice']
+variabilityDT <- diceHbA1cDT[Course == 'dafne']
 
-report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 5))
-colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post")
+variabilityWindowYears <- 4
+
+idList <- unique(variabilityDT$LinkId)
+
+report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 13))
+colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post", "median_pre", "median_post", "CV_pre", "CV_post", "mean_pre", "mean_post", "sd_pre", "sd_post")
 report_IQR_Frame$id <- idList
 
 print(length(idList))
 
+set.seed(1234)
 for (j in seq(1, length(idList), 1)) {
   
   #j = 76
   
   if (j %% 100 == 0) {print(j)}
   
-  plotSet <- diceHbA1cDT[LinkId == idList[j]]
-  preSet <- plotSet[timeRelativeToDICE_years > (-testWindow) & timeRelativeToDICE_years < 0]
-  postSet <- plotSet[timeRelativeToDICE_years >= 0 & timeRelativeToDICE_years < testWindow]
+  plotSet <- variabilityDT[LinkId == idList[j]]
+  preSet <- plotSet[timeRelativeToDICE_years > (-variabilityWindowYears) & timeRelativeToDICE_years < 0]
+  postSet <- plotSet[timeRelativeToDICE_years >= 0 & timeRelativeToDICE_years < variabilityWindowYears]
   
     # randomly equalise post and pre N hba1c values
     if (nrow(postSet) > nrow(preSet)) {
@@ -285,6 +293,18 @@ for (j in seq(1, length(idList), 1)) {
   IQR_pre <- quantile(preSet$hba1cNumeric)[4] - quantile(preSet$hba1cNumeric)[2]
   IQR_post <- quantile(postSet$hba1cNumeric)[4] - quantile(postSet$hba1cNumeric)[2]
   
+  median_pre <- quantile(preSet$hba1cNumeric)[3]
+  median_post <- quantile(postSet$hba1cNumeric)[3]
+  
+  mean_pre <- mean(preSet$hba1cNumeric)
+  mean_post <- mean(postSet$hba1cNumeric)
+  
+  sd_pre <- sd(preSet$hba1cNumeric)
+  sd_post <- sd(postSet$hba1cNumeric)
+  
+  cv_pre <- sd_pre / mean_pre
+  cv_post <- sd_post / mean_post
+  
   plot_x <- c(0, 1)
   plot_y <- c(IQR_pre, IQR_post)
 
@@ -301,6 +321,15 @@ for (j in seq(1, length(idList), 1)) {
   report_IQR_Frame$IQR_post[j] <- IQR_post
   report_IQR_Frame$n_pre[j] <- nrow(preSet)
   report_IQR_Frame$n_post[j] <- nrow(postSet)
+  report_IQR_Frame$median_pre[j] <- median_pre
+  report_IQR_Frame$median_post[j] <- median_post
+  report_IQR_Frame$cv_pre[j] <- cv_pre
+  report_IQR_Frame$cv_post[j] <- cv_post
+  report_IQR_Frame$mean_pre[j] <- mean_pre
+  report_IQR_Frame$mean_post[j] <- mean_post
+  report_IQR_Frame$sd_pre[j] <- sd_pre
+  report_IQR_Frame$sd_post[j] <- sd_post
+  
   
 }
 
@@ -314,30 +343,50 @@ print(quantile(report_IQR_Frame$n_pre, na.rm = T))
 print(quantile(report_IQR_Frame$n_post, na.rm = T))
 wilcox.test(report_IQR_Frame$n_pre, report_IQR_Frame$n_post, paired = T)
 
+print(quantile(report_IQR_Frame$median_pre, na.rm = T))
+print(quantile(report_IQR_Frame$median_post, na.rm = T))
+wilcox.test(report_IQR_Frame$median_pre, report_IQR_Frame$median_post, paired = T)
+
+print(quantile(report_IQR_Frame$cv_pre, na.rm = T))
+print(quantile(report_IQR_Frame$cv_post, na.rm = T))
+wilcox.test(report_IQR_Frame$cv_pre, report_IQR_Frame$cv_post, paired = T)
+
+print(quantile(report_IQR_Frame$mean_pre, na.rm = T))
+print(quantile(report_IQR_Frame$mean_post, na.rm = T))
+wilcox.test(report_IQR_Frame$mean_pre, report_IQR_Frame$mean_post, paired = T)
 
 
-#####
+
+#########################################################################################################
+#########################################################################################################
 # admissions pre/post
 
-# admissionsDT<-admissionsDT[nCBGperAdmission>2]
+#define what constitutes an admission
+admissionsDT_forTesting <- admissionsDT[(nCBGperAdmission>2 & admissionDurationDays >= 0.5)]
 
-windowOfInterestYears <- 3
+# set test set
+admissionFrequencyTestSet_DT <- diceHbA1cDT
+admissionFrequencyTestSet_DT <- diceHbA1cDT[Course == 'dice']
+admissionFrequencyTestSet_DT <- diceHbA1cDT[Course == 'dafne']
+
+windowOfInterestYears <- 2
 windowOfInterestSeconds <- windowOfInterestYears * (60*60*24*365.25)
-admissionIdList <- unique(diceHbA1cDT[DICE_unix < (lastAdmssionDate - windowOfInterestSeconds)]$PatId)
+# select group for analysis: time from diagnosis >= windowOfInterestYears and max followup time <windowOfInterestYears
+admissionIdList <- unique(admissionFrequencyTestSet_DT[timeToDICEfromDIagnosis_years > windowOfInterestYears & DICE_unix < (lastAdmssionDate - windowOfInterestSeconds)]$PatId)
 
 report_admission_Frame <- as.data.frame(matrix(nrow = length(admissionIdList), ncol = 5))
 colnames(report_admission_Frame) <- c("id", "adm_pre", "adm_post", "admIQR_pre", "admIQR_post")
 report_admission_Frame$id <- admissionIdList
 
 for (jj in seq(1, length(admissionIdList), 1)) {
-  admissionsSet <- admissionsDT[ID == admissionIdList[jj]]
-  diceDate <- diceHbA1cDT[PatId == admissionIdList[jj]]$DICE_unix[1]
+  admissionsSet <- admissionsDT_forTesting[ID == admissionIdList[jj]]
+  diceDate <- admissionFrequencyTestSet_DT[PatId == admissionIdList[jj]]$DICE_unix[1]
   
-  admissionsSet$timeRelativeToDICE <- admissionsSet$dateplustime1 - diceDate
-  admissionsSet$timeRelativeToDICE_years <- admissionsSet$timeRelativeToDICE / (60*60*24*365.25)
+  admissionsSet$admission_timeRelativeToDICE <- admissionsSet$dateplustime1 - diceDate
+  admissionsSet$admission_timeRelativeToDICE_years <- admissionsSet$admission_timeRelativeToDICE / (60*60*24*365.25)
   
-  preSet <- admissionsSet[timeRelativeToDICE_years > -windowOfInterestYears & timeRelativeToDICE_years <= 0]
-  postSet <- admissionsSet[timeRelativeToDICE_years > 0 & timeRelativeToDICE_years < windowOfInterestYears]
+  preSet <- admissionsSet[admission_timeRelativeToDICE_years > -windowOfInterestYears & admission_timeRelativeToDICE_years <= 0]
+  postSet <- admissionsSet[admission_timeRelativeToDICE_years > 0 & admission_timeRelativeToDICE_years < windowOfInterestYears]
   
   report_admission_Frame$adm_pre[jj] <- nrow(preSet)
   report_admission_Frame$adm_post[jj] <- nrow(postSet)
@@ -346,6 +395,8 @@ for (jj in seq(1, length(admissionIdList), 1)) {
     IQR_postSet <- postSet[nCBGperAdmission > 1]
     
 }
+
+print(length(admissionIdList))
 
 quantile(report_admission_Frame$adm_pre)
 quantile(report_admission_Frame$adm_post)
@@ -356,9 +407,15 @@ sum(report_admission_Frame$adm_post)
 atLeastOneAdmissionPre <- ifelse(report_admission_Frame$adm_pre > 0, 1, 0)
 atLeastOneAdmissionPost <- ifelse(report_admission_Frame$adm_post > 0, 1, 0)
 
+  sum(atLeastOneAdmissionPre)
+  sum(atLeastOneAdmissionPost)
+
 wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post, paired = T)
 wilcox.test(atLeastOneAdmissionPre, atLeastOneAdmissionPost, paired = T)
 prop.test(c(sum(atLeastOneAdmissionPre), sum(atLeastOneAdmissionPost)), c(length(admissionIdList), length(admissionIdList)))
+
+
+
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
