@@ -26,7 +26,7 @@ demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
 demogALL$dob_unix <- as.numeric(as.POSIXct(demogALL$BirthDate, format="%Y-%m-%d", tz="GMT"))
 demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
 demogALLDT <- data.table(demogALL)
-diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$DiabetesMellitusType_Mapped, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "diabetes_type","diagnosis_unix")
+diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$dob_unix, demogALLDT$DiabetesMellitusType_Mapped, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "dob_unix", "diabetes_type","diagnosis_unix")
 
 id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <- c("LinkId", "PatId")
 
