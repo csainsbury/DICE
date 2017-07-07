@@ -192,7 +192,7 @@ printValuesForTable <- function(inputDT) {
   print(uniqueN(inputDT$LinkId))
   
   print('age quantile')
-  print(quantile(inputDT$))
+  # print(quantile(inputDT$))
 
     
 }
@@ -209,7 +209,7 @@ allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
 diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 12), 12)
 dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 48, 12), 12)
 
-#####
+####################
 
 # simple plots
 
