@@ -25,7 +25,7 @@ saveOutFrame <- unique(saveOutFrame)
 
 dice_saveName <- paste('~/R/GlCoSy/SDsource/dice_pregnancyData_cleaned.csv')
 
-write.table(saveOutFrame, file = dice_saveName, row.names = F, col.names = T)
+write.table(saveOutFrame, file = dice_saveName, row.names = F, col.names = T, sep = ',')
 
 ###############################################################################
 # dafne
@@ -46,3 +46,5 @@ colnames(dafne_saveOutFrame) <- c('ID', 'unix_deliveryDate')
 dafne_saveOutFrame <- unique(dafne_saveOutFrame)
 
 dafne_saveName <- paste('~/R/GlCoSy/SDsource/dafne_pregnancyData_cleaned.csv')
+write.table(dafne_saveOutFrame, file = dafne_saveName, row.names = F, col.names = T, sep = ',')
+

@@ -23,9 +23,10 @@ admissionsDT<-data.table(admissions)
 lastAdmssionDate <- max(admissionsDT$dateplustime1)
 
 demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
+demogALL$dob_unix <- as.numeric(as.POSIXct(demogALL$BirthDate, format="%Y-%m-%d", tz="GMT"))
 demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
 demogALLDT <- data.table(demogALL)
-diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "diagnosis_unix")
+diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$DiabetesMellitusType_Mapped, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "diabetes_type","diagnosis_unix")
 
 id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <- c("LinkId", "PatId")
 
@@ -37,7 +38,7 @@ cleanHbA1cDataDT[, c("lastA1cDate") := max(dateplustime1) , by=.(LinkId)]
 hba1c_withID <- merge(cleanHbA1cDataDT, id_lookup, by = "LinkId")
 lastA1cFrame <- data.frame(hba1c_withID$LinkId, hba1c_withID$lastA1cDate); colnames(lastA1cFrame) <- c("LinkId", "lastA1cDate")
 
-diagnosisExclusionYears <- 3
+diagnosisExclusionYears <- 1.5
 testWindow <- 4
 hba1cWindow <- 3
 exclusionWindowMonths <- 1.5
@@ -52,12 +53,28 @@ diceData$DICE_unix <- returnUnixDateTime(diceData$Date)
 pumpList <- read.csv("~/R/GlCoSy/SDsource/pumpList.csv", sep=",", header = TRUE, row.names = NULL)
 pumpList$pumpDate_unix <- returnUnixDateTime(pumpList$pumpdate)
 
-# merge DICE and pump - cut all pumps in use before end of test window post DICE/DAFNE
-diceData_pump <- merge(diceData, pumpList, by.x = "CHI", by.y = "chi", all.x = T)
-diceData_pump$useFlag <- ifelse(diceData_pump$pumpDate_unix - diceData_pump$DICE_unix < (testWindow *60*60*24*365.25), 1, 0)
-diceData_pump$useFlag[is.na(diceData_pump$useFlag)] <- 1
-diceData <- subset(diceData_pump, useFlag == 1)
-
+  # merge DICE and pump - cut all pumps in use before end of test window post DICE/DAFNE
+  diceData_pump <- merge(diceData, pumpList, by.x = "CHI", by.y = "chi", all.x = T)
+    diceData_pump$courseToPump <- (diceData_pump$pumpDate_unix - diceData_pump$DICE_unix) / (60*60*24*365.25)
+    diceData_pump$courseToPump[is.na(diceData_pump$courseToPump)] <- 0
+  # diceData_pump$useFlag <- ifelse(diceData_pump$pumpDate_unix - diceData_pump$DICE_unix < (testWindow *60*60*24*365.25), 1, 0)
+  # diceData_pump$useFlag[is.na(diceData_pump$useFlag)] <- 1
+  diceData <- diceData_pump
+  
+# import pregnancy data
+  dice_preg<-read.csv("~/R/GlCoSy/SDsource/dice_pregnancyData_cleaned.csv")
+  dafne_preg<-read.csv("~/R/GlCoSy/SDsource/dafne_pregnancyData_cleaned.csv")
+  
+  # combine pregnancy data
+  pregDF <- rbind(dice_preg, dafne_preg); colnames(pregDF) <- c('CHI', 'unix_deliveryDate')
+  # merge pregnancy and all data
+  diceData_preg <- merge(diceData, pregDF, by.x = "CHI", by.y = "CHI", all.x = T)
+  diceData_preg$courseToDelivery <- (diceData_preg$unix_deliveryDate - diceData_preg$DICE_unix) / (60*60*24*365.25)
+  diceData_preg$courseToDelivery[is.na(diceData_preg$courseToDelivery)] <- 0
+  # diceData_preg$useFlag <- ifelse(diceData_preg$course_preg_interval > 0 & diceData_preg$course_preg_interval < testWindow, 0, 1)
+  # diceData_preg$useFlag[is.na(diceData_preg$useFlag)] <- 1
+  diceData <- diceData_preg
+  
 # remove dups - use first only
 diceDataDT <- data.table(diceData)
 diceDataDT[, c("firstCourse") := ifelse(DICE_unix == min(DICE_unix), 1, 0) , by=.(CHI)]
@@ -132,21 +149,26 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
     
   test_DT[, c('testCol') := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, inputTimes[j], windowMonths) , by=.(LinkId)]
   test_DT$testCol[is.na(test_DT$testCol)] <- 0
+ 
+  comparisonSet <-  test_DT[singleRowFlag == 1 &
+                              testCol > 0 &
+                              (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
+                              (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
   
-  print(nrow(test_DT[singleRowFlag == 1 & testCol > 0]))
-    reportingFrame$n[j] <- nrow(test_DT[singleRowFlag == 1 & testCol > 0])
+    print(nrow(comparisonSet))
+      reportingFrame$n[j] <- nrow(comparisonSet)
+      
+    print(quantile(comparisonSet$av_hba1c_priorWindow))
+      reportingFrame$median_pre[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[3]
     
-  print(quantile(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow))
-    reportingFrame$median_pre[j] <- quantile(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow)[3]
-  
-  print(quantile(test_DT[singleRowFlag == 1 & testCol > 0]$testCol))
-    reportingFrame$median_post[j] <- quantile(test_DT[singleRowFlag == 1 & testCol > 0]$testCol)[3]
+    print(quantile(comparisonSet$testCol))
+      reportingFrame$median_post[j] <- quantile(comparisonSet$testCol)[3]
+      
+    print(wilcox.test(comparisonSet$av_hba1c_priorWindow, comparisonSet$testCol, paired = T))
     
-  print(wilcox.test(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & testCol > 0]$testCol, paired = T))
-  
-  test <- wilcox.test(test_DT[singleRowFlag == 1 & testCol > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & testCol > 0]$testCol, paired = T)
-  
-    reportingFrame$pval[j] <- test$p.val
+    test <- wilcox.test(comparisonSet$av_hba1c_priorWindow, comparisonSet$testCol, paired = T)
+    
+      reportingFrame$pval[j] <- test$p.val
   
   }
   
@@ -161,53 +183,31 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
   
 }
 
-interval_difference <- function(test_DT) {
+printValuesForTable <- function(inputDT) {
   
-  print('month_6')
-  test_DT[, c("month_6") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 6, 6) , by=.(LinkId)]
-  test_DT$month_6[is.na(test_DT$month_6)] <- 0
-  print(nrow(test_DT[singleRowFlag == 1 & month_6 > 0]))
-  print(quantile(test_DT[singleRowFlag == 1 & month_6 > 0]$av_hba1c_priorWindow))
-  print(quantile(test_DT[singleRowFlag == 1 & month_6 > 0]$month_6))
-  print(wilcox.test(test_DT[singleRowFlag == 1 & month_6 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_6 > 0]$month_6, paired = T))
+  print('n hba1c tests')
+  print(nrow(inputDT))
   
-  print('month_12')
-  test_DT[, c("month_12") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 12, 6) , by=.(LinkId)]
-  test_DT$month_12[is.na(test_DT$month_12)] <- 0
-  print(nrow(test_DT[singleRowFlag == 1 & month_12 > 0]))
-  print(quantile(test_DT[singleRowFlag == 1 & month_12 > 0]$av_hba1c_priorWindow))
-  print(quantile(test_DT[singleRowFlag == 1 & month_12 > 0]$month_12))
-  print(wilcox.test(test_DT[singleRowFlag == 1 & month_12 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_12 > 0]$month_12, paired = T))
+  print('n IDs')
+  print(uniqueN(inputDT$LinkId))
   
-  print('month_24')
-  test_DT[, c("month_24") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 24, 6) , by=.(LinkId)]
-  test_DT$month_24[is.na(test_DT$month_24)] <- 0
-  print(nrow(test_DT[singleRowFlag == 1 & month_24 > 0]))
-  print(quantile(test_DT[singleRowFlag == 1 & month_24 > 0]$av_hba1c_priorWindow))
-  print(quantile(test_DT[singleRowFlag == 1 & month_24 > 0]$month_24))
-  print(wilcox.test(test_DT[singleRowFlag == 1 & month_24 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_24 > 0]$month_24, paired = T))
-  
-  print('month_36')
-  test_DT[, c("month_36") := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, 36, 6) , by=.(LinkId)]
-  test_DT$month_36[is.na(test_DT$month_36)] <- 0
-  print(nrow(test_DT[singleRowFlag == 1 & month_36 > 0]))
-  print(quantile(test_DT[singleRowFlag == 1 & month_36 > 0]$av_hba1c_priorWindow))
-  print(quantile(test_DT[singleRowFlag == 1 & month_36 > 0]$month_24))
-  print(wilcox.test(test_DT[singleRowFlag == 1 & month_36 > 0]$av_hba1c_priorWindow, test_DT[singleRowFlag == 1 & month_36 > 0]$month_36, paired = T))
-  
+  print('age quantile')
+  print(quantile(inputDT$))
+
+    
 }
 
 diceDT <- diceHbA1cDT[Course == 'dice']
 dafneDT <- diceHbA1cDT[Course == 'dafne']
 
-interval_difference(diceHbA1cDT)
+# interval_difference(diceHbA1cDT)
 
-interval_difference(diceDT)
-interval_difference(dafneDT)
+# interval_difference(diceDT)
+# interval_difference(dafneDT)
 
 allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
-diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 48, 6), 6)
+diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 12), 12)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 48, 12), 12)
 
 #####
 
@@ -226,7 +226,6 @@ plot(dice$stats[3, ], col = "red", ylim = c(50, 90)); lines(dice$stats[3, ], col
 points(dafne$stats[3, ], col = "blue"); lines(dafne$stats[3, ], col = "blue")
   points(dafne$stats[2, ], col = "blue", cex = 0); lines(dafne$stats[2, ], col = "blue", lty = 3)
   points(dafne$stats[4, ], col = "blue", cex = 0); lines(dafne$stats[4, ], col = "blue", lty = 3)
-
 
 
 idList <- unique(diceHbA1cDT$LinkId)
@@ -256,6 +255,8 @@ variabilityDT <- diceHbA1cDT[Course == 'dice']
 variabilityDT <- diceHbA1cDT[Course == 'dafne']
 
 variabilityWindowYears <- 4
+
+variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & ( courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
 
 idList <- unique(variabilityDT$LinkId)
 
@@ -414,8 +415,31 @@ wilcox.test(report_admission_Frame$adm_pre, report_admission_Frame$adm_post, pai
 wilcox.test(atLeastOneAdmissionPre, atLeastOneAdmissionPost, paired = T)
 prop.test(c(sum(atLeastOneAdmissionPre), sum(atLeastOneAdmissionPost)), c(length(admissionIdList), length(admissionIdList)))
 
+#########################################################################################################
+#########################################################################################################
+# match DICE to DAFNE. match for initial hba1c and followup duration
 
+dice_IDs <- unique(diceDT$PatId)
 
+for (jj in seq(1, length(dice_IDs), 1)) {
+  
+  ID_interest <- dice_IDs[jj]
+  
+  
+  
+}
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
 # file to find hba1c values for 
 findHbA1cValues <- function(LinkId_value, firstSGLT2Prescription, firstWindowMonths, IntervalMonths) {
