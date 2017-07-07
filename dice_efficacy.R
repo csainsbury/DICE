@@ -185,6 +185,9 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
 
 printValuesForTable <- function(inputDT) {
   
+  inputDT$age_at_course <- (inputDT$DICE_unix - inputDT$dob_unix) / (60*60*24*365.25)
+  inputDT[, c('single_id') := (ifelse(dateplustime1 == min(dateplustime1), 1, 0)), by = .(LinkId)]
+  
   print('n hba1c tests')
   print(nrow(inputDT))
   
@@ -192,9 +195,14 @@ printValuesForTable <- function(inputDT) {
   print(uniqueN(inputDT$LinkId))
   
   print('age quantile')
-  # print(quantile(inputDT$))
-
-    
+  print(quantile(inputDT[single_id == 1]$age_at_course))
+  
+  print('time to dice from diagnosis')
+  print(quantile(inputDT[single_id == 1]$timeToDICEfromDIagnosis_years))
+  
+  print('diabetes type')
+  print(table(inputDT[single_id == 1]$diabetes_type))
+  
 }
 
 diceDT <- diceHbA1cDT[Course == 'dice']
