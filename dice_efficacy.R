@@ -163,7 +163,9 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
   courseTimePoint <- maxHbA1cTimePoint - timeIntervalSeconds
   half_windowMonthsInSeconds <- ((windowMonths * (60*60*24*(365.25/12))) /2)
   # 
-  setOfAllCandidatesWithCourseInTimeRange <- test_DT[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds)]
+  setOfAllCandidatesWithCourseInTimeRange <- test_DT
+  setOfAllCandidatesWithCourseInTimeRange <- setOfAllCandidatesWithCourseInTimeRange[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds) & (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) & (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
+  
   n_availableForFollowUp <- uniqueN(setOfAllCandidatesWithCourseInTimeRange$LinkId)
   
   reportingFrame$n_available[j] <- n_availableForFollowUp
@@ -294,7 +296,7 @@ compareDiceDafneCharacteristics(diceHbA1cDT)
 
 allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
 diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(15, 45, 15), 15)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 45, 6), 6)
 
   plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
   points(dafneFrame$interval, dafneFrame$post_25, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_25, lty = 3, col = 'red')
