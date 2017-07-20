@@ -41,7 +41,7 @@ lastA1cFrame <- data.frame(hba1c_withID$LinkId, hba1c_withID$lastA1cDate); colna
 diagnosisExclusionYears <- 1.5
 testWindow <- 4
 hba1cWindow <- 3
-exclusionWindowMonths <- 1.5
+exclusionWindowMonths <- 0
 priorHba1cWindowYears <- 1
 
 # import DICE data
@@ -118,6 +118,15 @@ diceHbA1cDT[, c("av_hba1c_priorWindow") := average_hba1c_beforeCourse(timeRelati
 
 diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 58]
 
+# optional - limit to T1
+diceHbA1cDT <- diceHbA1cDT[diabetes_type == 'Type 1 Diabetes Mellitus']
+
+# remove those with no recorded date of diagnosis
+diceHbA1cDT <- diceHbA1cDT[diagnosis_unix > (-2208988800)]
+# remove those with a recorded HbA1c measuement date in the future
+diceHbA1cDT <- diceHbA1cDT[dateplustime1 < returnUnixDateTime('01/01/2017')]
+
+
 # dice vs dafne
 # diceHbA1cDT <- diceHbA1cDT[Course == 'dice']
 # diceHbA1cDT <- diceHbA1cDT[Course == 'dafne']
@@ -138,14 +147,27 @@ diceHbA1cDT[, c("singleRowFlag") := ifelse(dateplustime1 == min(dateplustime1),1
 interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) {
 
   
-  reportingFrame <- as.data.frame(matrix(nrow = length(inputTimes), ncol = 5))
-  colnames(reportingFrame) <- c('interval', 'n', 'median_pre', 'median_post', 'pval')
+  reportingFrame <- as.data.frame(matrix(nrow = length(inputTimes), ncol = 10))
+  colnames(reportingFrame) <- c('interval', 'n', 'n_available','median_pre', 'median_post', 'pval', "pre_25", "post_25", "pre_75", "post_75")
+  
+  maxHbA1cTimePoint <- max(test_DT$dateplustime1) - ((windowMonths * (60*60*24*(365.25/12))) /2)
   
   for (j in seq(1, length(inputTimes), 1)) {
     
     reportingFrame$interval[j] <- inputTimes[j]
   
   print(paste('month_', inputTimes[j], sep=''))
+  
+  ## calculate the max n available for each time point
+  timeIntervalSeconds <- inputTimes[j] * (60*60*24*(365.25/12))
+  courseTimePoint <- maxHbA1cTimePoint - timeIntervalSeconds
+  half_windowMonthsInSeconds <- ((windowMonths * (60*60*24*(365.25/12))) /2)
+  # 
+  setOfAllCandidatesWithCourseInTimeRange <- test_DT[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds)]
+  n_availableForFollowUp <- uniqueN(setOfAllCandidatesWithCourseInTimeRange$LinkId)
+  
+  reportingFrame$n_available[j] <- n_availableForFollowUp
+  
     
   test_DT[, c('testCol') := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, inputTimes[j], windowMonths) , by=.(LinkId)]
   test_DT$testCol[is.na(test_DT$testCol)] <- 0
@@ -156,13 +178,18 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
                               (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
   
     print(nrow(comparisonSet))
-      reportingFrame$n[j] <- nrow(comparisonSet)
+      reportingFrame$n[j] <- uniqueN(comparisonSet$LinkId)
       
     print(quantile(comparisonSet$av_hba1c_priorWindow))
       reportingFrame$median_pre[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[3]
+      reportingFrame$pre_25[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[2]
+      reportingFrame$pre_75[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[4]
     
     print(quantile(comparisonSet$testCol))
       reportingFrame$median_post[j] <- quantile(comparisonSet$testCol)[3]
+      reportingFrame$post_25[j] <- quantile(comparisonSet$testCol)[2]
+      reportingFrame$post_75[j] <- quantile(comparisonSet$testCol)[4]
+      
       
     print(wilcox.test(comparisonSet$av_hba1c_priorWindow, comparisonSet$testCol, paired = T))
     
@@ -173,9 +200,14 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
   }
   
   reportingFrame$median_diff <- reportingFrame$median_post - reportingFrame$median_pre
+  # reportingFrame$diff_25 <- reportingFrame$post_25 - reportingFrame$pre_25
+  # reportingFrame$diff_75 <- reportingFrame$post_75 - reportingFrame$pre_75
+  
   plot(reportingFrame$interval, reportingFrame$median_diff, xlab = 'months', ylab = 'difference median hba1c', cex = 2, pch = 16, col = ifelse(reportingFrame$pval < 0.05, 'red', 'black')); lines(reportingFrame$interval, reportingFrame$median_diff)
   abline(0, 1)
   
+  reportingFrame$n_prop <- reportingFrame$n / reportingFrame$n_available
+
   print(reportingFrame)
   
   return(reportingFrame)
@@ -205,6 +237,51 @@ printValuesForTable <- function(inputDT) {
   
 }
 
+compareDiceDafneCharacteristics <- function(inputDT) {
+  
+  inputDT$age_at_course <- (inputDT$DICE_unix - inputDT$dob_unix) / (60*60*24*365.25)
+  inputDT[, c('single_id') := (ifelse(dateplustime1 == min(dateplustime1), 1, 0)), by = .(LinkId)]
+  
+  print('compare age at course')
+  diceAge <- inputDT[single_id == 1 & Course == 'dice']$age_at_course
+  dafneAge <- inputDT[single_id == 1 & Course == 'dafne']$age_at_course
+  
+  print('dice age')
+  print(quantile(diceAge))
+  print('dafne age')
+  print(quantile(dafneAge))
+  testAge <- wilcox.test(diceAge, dafneAge)
+  print(testAge)
+  
+  print('time to dice from diagnosis')
+  diceTimeToDice <- inputDT[single_id == 1 & Course == 'dice']$timeToDICEfromDIagnosis_years
+  dafneTimeToDafne <- inputDT[single_id == 1 & Course == 'dafne']$timeToDICEfromDIagnosis_years
+  
+  print('dice time to course')
+  print(quantile(diceTimeToDice))
+  print('dafne time to course')
+  print(quantile(dafneTimeToDafne))
+  
+  testTimeToCourse <- wilcox.test(diceTimeToDice, dafneTimeToDafne)
+  print(testTimeToCourse)
+  
+  print('diabetes type test')
+    diceT2 <- nrow(inputDT[single_id == 1 & Course == 'dice' & diabetes_type == 'Type 2 Diabetes Mellitus'])
+    dafneT2 <- nrow(inputDT[single_id == 1 & Course == 'dafne' & diabetes_type == 'Type 2 Diabetes Mellitus'])
+    dice_all <- nrow(inputDT[single_id == 1 & Course == 'dice'])
+    dafne_all <- nrow(inputDT[single_id == 1 & Course == 'dafne'])
+  
+  print('diceT2'); print(diceT2)
+  print('dafneT2'); print(dafneT2)
+  print('dice_all'); print(dice_all)
+  print('dafne_all'); print(dafne_all)
+  
+  print(prop.test(c(diceT2, dafneT2), c(dice_all, dafne_all)))
+  
+  print(table(inputDT[single_id == 1]$diabetes_type))
+  
+}
+
 diceDT <- diceHbA1cDT[Course == 'dice']
 dafneDT <- diceHbA1cDT[Course == 'dafne']
 
@@ -213,9 +290,22 @@ dafneDT <- diceHbA1cDT[Course == 'dafne']
 # interval_difference(diceDT)
 # interval_difference(dafneDT)
 
+compareDiceDafneCharacteristics(diceHbA1cDT)
+
 allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
-diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 12), 12)
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 48, 12), 12)
+diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(15, 45, 15), 15)
+
+  plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
+  points(dafneFrame$interval, dafneFrame$post_25, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_25, lty = 3, col = 'red')
+  points(dafneFrame$interval, dafneFrame$post_75, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_75, lty = 3, col = 'red')
+  abline(quantile(dafneFrame$median_pre)[3], 0, col = 'blue')
+  abline(quantile(dafneFrame$pre_25)[3], 0, lty = 4, col = 'blue')
+  abline(quantile(dafneFrame$pre_75)[3], 0, lty = 4, col = 'blue')
+# dafneFrame <- interval_difference_variableTime(dafneDT, c(6, 12, 36), 6)
+
+
+printValuesForTable(diceHbA1cDT)
 
 ####################
 
