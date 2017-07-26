@@ -115,7 +115,6 @@ average_hba1c_beforeCourse <- function(timeRelativeToDICE_years, hba1cNumeric) {
 }
 
 diceHbA1cDT[, c("av_hba1c_priorWindow") := average_hba1c_beforeCourse(timeRelativeToDICE_years, hba1cNumeric) , by=.(LinkId)]
-
 diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 58]
 
 # optional - limit to T1
@@ -143,14 +142,13 @@ average_hba1c_atTimePoint <- function(timeRelativeToDICE_years, hba1cNumeric, ti
 
 diceHbA1cDT[, c("singleRowFlag") := ifelse(dateplustime1 == min(dateplustime1),1 , 0) , by=.(LinkId)]
 
-
-interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) {
+interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, impute, hba1c_valueToAdd) {
 
   
   reportingFrame <- as.data.frame(matrix(nrow = length(inputTimes), ncol = 10))
   colnames(reportingFrame) <- c('interval', 'n', 'n_available','median_pre', 'median_post', 'pval', "pre_25", "post_25", "pre_75", "post_75")
   
-  maxHbA1cTimePoint <- max(test_DT$dateplustime1) - ((windowMonths * (60*60*24*(365.25/12))) /2)
+  maxHbA1cTimePoint <- max(test_DT$dateplustime1) # - ((windowMonths * (60*60*24*(365.25/12))) /2)
   
   for (j in seq(1, length(inputTimes), 1)) {
     
@@ -159,28 +157,55 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths) 
   print(paste('month_', inputTimes[j], sep=''))
   
   ## calculate the max n available for each time point
-  timeIntervalSeconds <- inputTimes[j] * (60*60*24*(365.25/12))
-  courseTimePoint <- maxHbA1cTimePoint - timeIntervalSeconds
-  half_windowMonthsInSeconds <- ((windowMonths * (60*60*24*(365.25/12))) /2)
-  # 
-  setOfAllCandidatesWithCourseInTimeRange <- test_DT
-  setOfAllCandidatesWithCourseInTimeRange <- setOfAllCandidatesWithCourseInTimeRange[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds) & (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) & (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
-  
-  n_availableForFollowUp <- uniqueN(setOfAllCandidatesWithCourseInTimeRange$LinkId)
-  
-  reportingFrame$n_available[j] <- n_availableForFollowUp
+      # timeIntervalSeconds <- inputTimes[j] * (60*60*24*(365.25/12))
+      # courseTimePoint <- maxHbA1cTimePoint - timeIntervalSeconds
+      # half_windowMonthsInSeconds <- ((windowMonths * (60*60*24*(365.25/12))) /2)
+      # # 
+      # setOfAllCandidatesWithCourseInTimeRange <- test_DT
+      # setOfAllCandidatesWithCourseInTimeRange <- setOfAllCandidatesWithCourseInTimeRange[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds) & (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) & (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
+      # 
+      # n_availableForFollowUp <- uniqueN(setOfAllCandidatesWithCourseInTimeRange$LinkId)
+      # 
+      # reportingFrame$n_available[j] <- n_availableForFollowUp
+      # 
+      # id_frame_forMerge <- data.frame(unique(setOfAllCandidatesWithCourseInTimeRange$LinkId)); colnames(id_frame_forMerge) <- c('LinkId')
+      # id_frame_forMerge$mergeFlag = 1
   
     
   test_DT[, c('testCol') := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, inputTimes[j], windowMonths) , by=.(LinkId)]
+  
+  # if NA is returned for testCol then no value available.
+  # first count the number of IDs who went to course but have no return value for this time point
   test_DT$testCol[is.na(test_DT$testCol)] <- 0
- 
+  noReturnedHbA1cValue_set <- test_DT[test_DT$testCol == 0]
+  noReturnedHbA1cValue_set_meetingAnalysisParameter <- noReturnedHbA1cValue_set[singleRowFlag == 1 &
+                                                                                  (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
+                                                                                  (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
+  
+  numberOfUnreturnedTests <- nrow(noReturnedHbA1cValue_set_meetingAnalysisParameter)
+  
+  # now make the returned value equal to the pre course value, if the impute switch == 1
+  if(impute == 1) {
+    test_DT$testCol <- ifelse(test_DT$testCol == 0, test_DT$av_hba1c_priorWindow + hba1c_valueToAdd, test_DT$testCol)
+  }
+
   comparisonSet <-  test_DT[singleRowFlag == 1 &
                               testCol > 0 &
                               (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
                               (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
   
+  comparisonSet_forMerge <- data.frame(unique(comparisonSet$LinkId)); colnames(comparisonSet_forMerge) <- c('LinkId')
+  comparisonSet_forMerge$comparison_mergeFlag = 1
+  
+  # identify those in comparison set that aren't in the available set
+  setInBoth <- merge(comparisonSet, id_frame_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
+  inAvailableButNotFollowedUp <- merge(id_frame_forMerge, comparisonSet_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
+    inAvailableButNotFollowedUp$comparison_mergeFlag[is.na(inAvailableButNotFollowedUp$comparison_mergeFlag)] <- 0
+  
     print(nrow(comparisonSet))
       reportingFrame$n[j] <- uniqueN(comparisonSet$LinkId)
+      
+      reportingFrame$n_available[j] <- reportingFrame$n[j] + numberOfUnreturnedTests
       
     print(quantile(comparisonSet$av_hba1c_priorWindow))
       reportingFrame$median_pre[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[3]
@@ -293,17 +318,18 @@ dafneDT <- diceHbA1cDT[Course == 'dafne']
 # interval_difference(dafneDT)
 
 compareDiceDafneCharacteristics(diceHbA1cDT)
+# 
+# allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
+# diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
 
-allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
-diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 45, 6), 6)
-
-  plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
-  points(dafneFrame$interval, dafneFrame$post_25, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_25, lty = 3, col = 'red')
-  points(dafneFrame$interval, dafneFrame$post_75, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_75, lty = 3, col = 'red')
-  abline(quantile(dafneFrame$median_pre)[3], 0, col = 'blue')
-  abline(quantile(dafneFrame$pre_25)[3], 0, lty = 4, col = 'blue')
-  abline(quantile(dafneFrame$pre_75)[3], 0, lty = 4, col = 'blue')
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(12, 60, 12), 12, 1, 0)
+# 
+#   plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
+#   points(dafneFrame$interval, dafneFrame$post_25, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_25, lty = 3, col = 'red')
+#   points(dafneFrame$interval, dafneFrame$post_75, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_75, lty = 3, col = 'red')
+#   abline(quantile(dafneFrame$median_pre)[3], 0, col = 'blue')
+#   abline(quantile(dafneFrame$pre_25)[3], 0, lty = 4, col = 'blue')
+#   abline(quantile(dafneFrame$pre_75)[3], 0, lty = 4, col = 'blue')
 # dafneFrame <- interval_difference_variableTime(dafneDT, c(6, 12, 36), 6)
 
 
