@@ -180,7 +180,8 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   noReturnedHbA1cValue_set <- test_DT[test_DT$testCol == 0]
   noReturnedHbA1cValue_set_meetingAnalysisParameter <- noReturnedHbA1cValue_set[singleRowFlag == 1 &
                                                                                   (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
-                                                                                  (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
+                                                                                  (courseToPump == 0 | courseToPump > (inputTimes[j]/12)) &
+                                                                                  (max(test_DT$dateplustime1) - DICE_unix) < (inputTimes[j] * (60*60*24*(365.25/12)))]
   
   numberOfUnreturnedTests <- nrow(noReturnedHbA1cValue_set_meetingAnalysisParameter)
   
@@ -320,9 +321,12 @@ dafneDT <- diceHbA1cDT[Course == 'dafne']
 compareDiceDafneCharacteristics(diceHbA1cDT)
 # 
 # allFrame <- interval_difference_variableTime(diceHbA1cDT, seq(6, 48, 6), 6)
-# diceFrame <- interval_difference_variableTime(diceDT, seq(6, 48, 6), 6)
+# diceFrame <- interval_difference_variableTime(diceDT, seq(15, 60, 15), 15, 1, 0)
 
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(12, 60, 12), 12, 1, 0)
+## main plot here
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 60, 6), 6, 1, 0)
+
+
 # 
 #   plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
 #   points(dafneFrame$interval, dafneFrame$post_25, pch = 16, cex = 1, col = 'red'); lines(dafneFrame$interval, dafneFrame$post_25, lty = 3, col = 'red')
