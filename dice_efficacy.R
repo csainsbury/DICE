@@ -384,7 +384,7 @@ variabilityDT <- diceHbA1cDT
 variabilityDT <- diceHbA1cDT[Course == 'dice']
 variabilityDT <- diceHbA1cDT[Course == 'dafne']
 
-variabilityWindowYears <- 4
+variabilityWindowYears <- 5
 
 # remove those on a pump within the variaiblity window, or those pregnant within the window
 variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & ( courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
@@ -475,6 +475,8 @@ for (j in seq(1, length(idList), 1)) {
   
 }
 
+print(length(idList))
+
 report_IQR_Frame <- subset(report_IQR_Frame, n_pre >1 & n_post >1)
 
 print(quantile(report_IQR_Frame$IQR_pre, na.rm = T))
@@ -492,6 +494,8 @@ wilcox.test(report_IQR_Frame$median_pre, report_IQR_Frame$median_post, paired = 
 print(quantile(report_IQR_Frame$cv_pre, na.rm = T))
 print(quantile(report_IQR_Frame$cv_post, na.rm = T))
 wilcox.test(report_IQR_Frame$cv_pre, report_IQR_Frame$cv_post, paired = T)
+
+  boxplot(report_IQR_Frame$cv_pre, report_IQR_Frame$cv_post, ylim = c(0, 0.3))
 
 print(quantile(report_IQR_Frame$mean_pre, na.rm = T))
 print(quantile(report_IQR_Frame$mean_post, na.rm = T))
