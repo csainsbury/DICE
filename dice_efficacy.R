@@ -386,10 +386,12 @@ variabilityDT <- diceHbA1cDT[Course == 'dafne']
 
 variabilityWindowYears <- 4
 
+# remove those on a pump within the variaiblity window, or those pregnant within the window
 variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & ( courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
 
 idList <- unique(variabilityDT$LinkId)
 
+# set up reporting frame
 report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 13))
 colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post", "median_pre", "median_post", "CV_pre", "CV_post", "mean_pre", "mean_post", "sd_pre", "sd_post")
 report_IQR_Frame$id <- idList
@@ -406,6 +408,15 @@ for (j in seq(1, length(idList), 1)) {
   plotSet <- variabilityDT[LinkId == idList[j]]
   preSet <- plotSet[timeRelativeToDICE_years > (-variabilityWindowYears) & timeRelativeToDICE_years < 0]
   postSet <- plotSet[timeRelativeToDICE_years >= 0 & timeRelativeToDICE_years < variabilityWindowYears]
+  
+  # code to ensure that the followup periods pre and post course are equalised
+  earliestPreSetHbA1c <- min(preSet$timeRelativeToDICE_years)
+  latestPostSetHbA1c  <- max(postSet$timeRelativeToDICE_years)
+  
+  smallerWindowValue <- min(c(sqrt((earliestPreSetHbA1c)^2), sqrt((latestPostSetHbA1c)^2)))
+  
+  preSet <- preSet[timeRelativeToDICE_years > -(smallerWindowValue)]
+  postSet <- postSet[timeRelativeToDICE_years < smallerWindowValue]
   
     # randomly equalise post and pre N hba1c values
     if (nrow(postSet) > nrow(preSet)) {
