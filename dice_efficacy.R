@@ -144,7 +144,6 @@ diceHbA1cDT[, c("singleRowFlag") := ifelse(dateplustime1 == min(dateplustime1),1
 
 interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, impute, hba1c_valueToAdd) {
 
-  
   reportingFrame <- as.data.frame(matrix(nrow = length(inputTimes), ncol = 10))
   colnames(reportingFrame) <- c('interval', 'n', 'n_available','median_pre', 'median_post', 'pval', "pre_25", "post_25", "pre_75", "post_75")
   
@@ -152,7 +151,7 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   
   for (j in seq(1, length(inputTimes), 1)) {
     
-    reportingFrame$interval[j] <- inputTimes[j]
+  reportingFrame$interval[j] <- inputTimes[j]
   
   print(paste('month_', inputTimes[j], sep=''))
   
@@ -199,9 +198,9 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   comparisonSet_forMerge$comparison_mergeFlag = 1
   
   # identify those in comparison set that aren't in the available set
-  setInBoth <- merge(comparisonSet, id_frame_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
-  inAvailableButNotFollowedUp <- merge(id_frame_forMerge, comparisonSet_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
-    inAvailableButNotFollowedUp$comparison_mergeFlag[is.na(inAvailableButNotFollowedUp$comparison_mergeFlag)] <- 0
+  # setInBoth <- merge(comparisonSet, id_frame_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
+  # inAvailableButNotFollowedUp <- merge(id_frame_forMerge, comparisonSet_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
+  #  inAvailableButNotFollowedUp$comparison_mergeFlag[is.na(inAvailableButNotFollowedUp$comparison_mergeFlag)] <- 0
   
     print(nrow(comparisonSet))
       reportingFrame$n[j] <- uniqueN(comparisonSet$LinkId)
@@ -500,8 +499,6 @@ wilcox.test(report_IQR_Frame$cv_pre, report_IQR_Frame$cv_post, paired = T)
 print(quantile(report_IQR_Frame$mean_pre, na.rm = T))
 print(quantile(report_IQR_Frame$mean_post, na.rm = T))
 wilcox.test(report_IQR_Frame$mean_pre, report_IQR_Frame$mean_post, paired = T)
-
-
 
 #########################################################################################################
 #########################################################################################################
