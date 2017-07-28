@@ -75,6 +75,8 @@ pumpList$pumpDate_unix <- returnUnixDateTime(pumpList$pumpdate)
   # diceData_preg$useFlag[is.na(diceData_preg$useFlag)] <- 1
   diceData <- diceData_preg
   
+  # uniqueN(subset(diceData, Course == 'dafne')$CHI)
+  
 # remove dups - use first only
 diceDataDT <- data.table(diceData)
 diceDataDT[, c("firstCourse") := ifelse(DICE_unix == min(DICE_unix), 1, 0) , by=.(CHI)]
@@ -194,8 +196,8 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
                               (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
                               (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
   
-  comparisonSet_forMerge <- data.frame(unique(comparisonSet$LinkId)); colnames(comparisonSet_forMerge) <- c('LinkId')
-  comparisonSet_forMerge$comparison_mergeFlag = 1
+  # comparisonSet_forMerge <- data.frame(unique(comparisonSet$LinkId)); colnames(comparisonSet_forMerge) <- c('LinkId')
+  # comparisonSet_forMerge$comparison_mergeFlag = 1
   
   # identify those in comparison set that aren't in the available set
   # setInBoth <- merge(comparisonSet, id_frame_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
@@ -203,9 +205,9 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   #  inAvailableButNotFollowedUp$comparison_mergeFlag[is.na(inAvailableButNotFollowedUp$comparison_mergeFlag)] <- 0
   
     print(nrow(comparisonSet))
-      reportingFrame$n[j] <- uniqueN(comparisonSet$LinkId)
-      
-      reportingFrame$n_available[j] <- reportingFrame$n[j] + numberOfUnreturnedTests
+    
+      reportingFrame$n[j] <- uniqueN(comparisonSet$LinkId) - numberOfUnreturnedTests
+      reportingFrame$n_available[j] <- uniqueN(comparisonSet$LinkId)
       
     print(quantile(comparisonSet$av_hba1c_priorWindow))
       reportingFrame$median_pre[j] <- quantile(comparisonSet$av_hba1c_priorWindow)[3]
@@ -216,7 +218,6 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
       reportingFrame$median_post[j] <- quantile(comparisonSet$testCol)[3]
       reportingFrame$post_25[j] <- quantile(comparisonSet$testCol)[2]
       reportingFrame$post_75[j] <- quantile(comparisonSet$testCol)[4]
-      
       
     print(wilcox.test(comparisonSet$av_hba1c_priorWindow, comparisonSet$testCol, paired = T))
     
@@ -231,14 +232,16 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   # reportingFrame$diff_75 <- reportingFrame$post_75 - reportingFrame$pre_75
   
   plot(reportingFrame$interval, reportingFrame$median_diff, xlab = 'months', ylab = 'difference median hba1c', cex = 2, pch = 16, col = ifelse(reportingFrame$pval < 0.05, 'red', 'black')); lines(reportingFrame$interval, reportingFrame$median_diff)
-  abline(0, 1)
+  
+  # points(reportingFrame$interval, (reportingFrame$median_diff - (reportingFrame$pre_25 - reportingFrame$post_25)))
+  # points(reportingFrame$interval, (reportingFrame$median_diff + (reportingFrame$pre_75 - reportingFrame$post_75)))
+  # abline(0, 1)
   
   reportingFrame$n_prop <- reportingFrame$n / reportingFrame$n_available
 
   print(reportingFrame)
   
   return(reportingFrame)
-  
   
 }
 
@@ -335,8 +338,9 @@ dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 60, 6), 6, 1, 0)
 #   abline(quantile(dafneFrame$pre_75)[3], 0, lty = 4, col = 'blue')
 # dafneFrame <- interval_difference_variableTime(dafneDT, c(6, 12, 36), 6)
 
-
 printValuesForTable(diceHbA1cDT)
+printValuesForTable(dafneDT)
+
 
 ####################
 
@@ -386,7 +390,7 @@ variabilityDT <- diceHbA1cDT[Course == 'dafne']
 variabilityWindowYears <- 5
 
 # remove those on a pump within the variaiblity window, or those pregnant within the window
-variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & ( courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
+# variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & (courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
 
 idList <- unique(variabilityDT$LinkId)
 
@@ -406,7 +410,11 @@ for (j in seq(1, length(idList), 1)) {
   
   plotSet <- variabilityDT[LinkId == idList[j]]
   preSet <- plotSet[timeRelativeToDICE_years > (-variabilityWindowYears) & timeRelativeToDICE_years < 0]
-  postSet <- plotSet[timeRelativeToDICE_years >= 0 & timeRelativeToDICE_years < variabilityWindowYears]
+  # ensure post set doesn't include pump/pregnancy data
+  postSet <- plotSet[timeRelativeToDICE_years >= 0 &
+                       timeRelativeToDICE_years < variabilityWindowYears &
+                       (courseToDelivery == 0 | courseToDelivery > timeRelativeToDICE_years) &
+                       (courseToPump == 0 | courseToPump > timeRelativeToDICE_years)]
   
   # code to ensure that the followup periods pre and post course are equalised
   earliestPreSetHbA1c <- min(preSet$timeRelativeToDICE_years)
