@@ -157,22 +157,6 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   
   print(paste('month_', inputTimes[j], sep=''))
   
-  ## calculate the max n available for each time point
-      # timeIntervalSeconds <- inputTimes[j] * (60*60*24*(365.25/12))
-      # courseTimePoint <- maxHbA1cTimePoint - timeIntervalSeconds
-      # half_windowMonthsInSeconds <- ((windowMonths * (60*60*24*(365.25/12))) /2)
-      # # 
-      # setOfAllCandidatesWithCourseInTimeRange <- test_DT
-      # setOfAllCandidatesWithCourseInTimeRange <- setOfAllCandidatesWithCourseInTimeRange[DICE_unix < (courseTimePoint + half_windowMonthsInSeconds) & (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) & (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
-      # 
-      # n_availableForFollowUp <- uniqueN(setOfAllCandidatesWithCourseInTimeRange$LinkId)
-      # 
-      # reportingFrame$n_available[j] <- n_availableForFollowUp
-      # 
-      # id_frame_forMerge <- data.frame(unique(setOfAllCandidatesWithCourseInTimeRange$LinkId)); colnames(id_frame_forMerge) <- c('LinkId')
-      # id_frame_forMerge$mergeFlag = 1
-  
-    
   test_DT[, c('testCol') := average_hba1c_atTimePoint(timeRelativeToDICE_years, hba1cNumeric, inputTimes[j], windowMonths) , by=.(LinkId)]
   
   # if NA is returned for testCol then no value available.
@@ -182,7 +166,7 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   noReturnedHbA1cValue_set_meetingAnalysisParameter <- noReturnedHbA1cValue_set[singleRowFlag == 1 &
                                                                                   (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
                                                                                   (courseToPump == 0 | courseToPump > (inputTimes[j]/12)) &
-                                                                                  (max(test_DT$dateplustime1) - DICE_unix) < (inputTimes[j] * (60*60*24*(365.25/12)))]
+                                                                                  (max(test_DT$dateplustime1) - DICE_unix) >= ((inputTimes[j] * (60*60*24*(365.25/12))) - (windowMonths * (60*60*24*(365.25/12))))]
   
   numberOfUnreturnedTests <- nrow(noReturnedHbA1cValue_set_meetingAnalysisParameter)
   
@@ -194,15 +178,8 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   comparisonSet <-  test_DT[singleRowFlag == 1 &
                               testCol > 0 &
                               (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
-                              (courseToPump == 0 | courseToPump > (inputTimes[j]/12))]
-  
-  # comparisonSet_forMerge <- data.frame(unique(comparisonSet$LinkId)); colnames(comparisonSet_forMerge) <- c('LinkId')
-  # comparisonSet_forMerge$comparison_mergeFlag = 1
-  
-  # identify those in comparison set that aren't in the available set
-  # setInBoth <- merge(comparisonSet, id_frame_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
-  # inAvailableButNotFollowedUp <- merge(id_frame_forMerge, comparisonSet_forMerge, by.x = 'LinkId', by.y = 'LinkId', all.x = T)
-  #  inAvailableButNotFollowedUp$comparison_mergeFlag[is.na(inAvailableButNotFollowedUp$comparison_mergeFlag)] <- 0
+                              (courseToPump == 0 | courseToPump > (inputTimes[j]/12)) &
+                              (max(test_DT$dateplustime1) - DICE_unix) >= ((inputTimes[j] * (60*60*24*(365.25/12))) - (windowMonths * (60*60*24*(365.25/12))))]
   
     print(nrow(comparisonSet))
     
@@ -326,7 +303,7 @@ compareDiceDafneCharacteristics(diceHbA1cDT)
 # diceFrame <- interval_difference_variableTime(diceDT, seq(15, 60, 15), 15, 1, 0)
 
 ## main plot here
-dafneFrame <- interval_difference_variableTime(dafneDT, seq(6, 60, 6), 6, 1, 0)
+dafneFrame <- interval_difference_variableTime(dafneDT, seq(12, 60, 12), 12, 1, 0)
 
 
 # 
