@@ -25,8 +25,10 @@ lastAdmssionDate <- max(admissionsDT$dateplustime1)
 demogALL<-read.csv("~/R/GlCoSy/SDsource/diagnosisDateDeathDate.txt")
 demogALL$dob_unix <- as.numeric(as.POSIXct(demogALL$BirthDate, format="%Y-%m-%d", tz="GMT"))
 demogALL$diagnosis_unix <- as.numeric(as.POSIXct(demogALL$DateOfDiagnosisDiabetes_Date, format="%Y-%m-%d", tz="GMT"))
+demogALL$death_unix <- as.numeric(as.POSIXct(demogALL$DeathDate, format="%Y-%m-%d", tz="GMT"))
+
 demogALLDT <- data.table(demogALL)
-diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$dob_unix, demogALLDT$DiabetesMellitusType_Mapped, demogALLDT$diagnosis_unix); colnames(diagnosis_id) <- c("PatId", "dob_unix", "diabetes_type","diagnosis_unix")
+diagnosis_id <- data.table(demogALLDT$PatId, demogALLDT$dob_unix, demogALLDT$DiabetesMellitusType_Mapped, demogALLDT$diagnosis_unix, demogALLDT$death_unix); colnames(diagnosis_id) <- c("PatId", "dob_unix", "diabetes_type","diagnosis_unix", "death_unix")
 
 id_lookup <- data.frame(demogALL$LinkId, demogALL$PatId); colnames(id_lookup) <- c("LinkId", "PatId")
 
@@ -126,7 +128,8 @@ diceHbA1cDT <- diceHbA1cDT[diabetes_type == 'Type 1 Diabetes Mellitus']
 diceHbA1cDT <- diceHbA1cDT[diagnosis_unix > (-2208988800)]
 # remove those with a recorded HbA1c measuement date in the future
 diceHbA1cDT <- diceHbA1cDT[dateplustime1 < returnUnixDateTime('01/01/2017')]
-
+# deal with NA death dates
+diceHbA1cDT$death_unix[is.na(diceHbA1cDT$death_unix)] <- 0
 
 # dice vs dafne
 # diceHbA1cDT <- diceHbA1cDT[Course == 'dice']
@@ -166,6 +169,7 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
   noReturnedHbA1cValue_set_meetingAnalysisParameter <- noReturnedHbA1cValue_set[singleRowFlag == 1 &
                                                                                   (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
                                                                                   (courseToPump == 0 | courseToPump > (inputTimes[j]/12)) &
+                                                                                  (death_unix == 0 | death_unix > (inputTimes[j] * (60*60*24*(365.25/12)))) &
                                                                                   (max(test_DT$dateplustime1) - DICE_unix) >= ((inputTimes[j] * (60*60*24*(365.25/12))) - (windowMonths * (60*60*24*(365.25/12))))]
   
   numberOfUnreturnedTests <- nrow(noReturnedHbA1cValue_set_meetingAnalysisParameter)
@@ -179,6 +183,7 @@ interval_difference_variableTime <- function(test_DT, inputTimes, windowMonths, 
                               testCol > 0 &
                               (courseToDelivery == 0 | courseToDelivery > (inputTimes[j]/12)) &
                               (courseToPump == 0 | courseToPump > (inputTimes[j]/12)) &
+                              (death_unix == 0 | death_unix > (inputTimes[j] * (60*60*24*(365.25/12)))) &
                               (max(test_DT$dateplustime1) - DICE_unix) >= ((inputTimes[j] * (60*60*24*(365.25/12))) - (windowMonths * (60*60*24*(365.25/12))))]
   
     print(nrow(comparisonSet))
