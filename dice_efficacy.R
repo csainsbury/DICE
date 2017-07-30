@@ -377,8 +377,8 @@ variabilityWindowYears <- 5
 idList <- unique(variabilityDT$LinkId)
 
 # set up reporting frame
-report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 13))
-colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post", "median_pre", "median_post", "CV_pre", "CV_post", "mean_pre", "mean_post", "sd_pre", "sd_post")
+report_IQR_Frame <- as.data.frame(matrix(nrow = length(idList), ncol = 14))
+colnames(report_IQR_Frame) <- c("id", "IQR_pre", "IQR_post", "n_pre", "n_post", "median_pre", "median_post", "CV_pre", "CV_post", "mean_pre", "mean_post", "sd_pre", "sd_post", 'smallerWindowValue')
 report_IQR_Frame$id <- idList
 
 print(length(idList))
@@ -460,6 +460,7 @@ for (j in seq(1, length(idList), 1)) {
   report_IQR_Frame$mean_post[j] <- mean_post
   report_IQR_Frame$sd_pre[j] <- sd_pre
   report_IQR_Frame$sd_post[j] <- sd_post
+  report_IQR_Frame$smallerWindowValue[j] <- smallerWindowValue
   
   
 }
@@ -489,6 +490,13 @@ wilcox.test(report_IQR_Frame$cv_pre, report_IQR_Frame$cv_post, paired = T)
 print(quantile(report_IQR_Frame$mean_pre, na.rm = T))
 print(quantile(report_IQR_Frame$mean_post, na.rm = T))
 wilcox.test(report_IQR_Frame$mean_pre, report_IQR_Frame$mean_post, paired = T)
+
+print(quantile(report_IQR_Frame$sd_pre, na.rm = T))
+print(quantile(report_IQR_Frame$sd_post, na.rm = T))
+wilcox.test(report_IQR_Frame$sd_pre, report_IQR_Frame$sd_post, paired = T)
+
+print()
+print(quantile(report_IQR_Frame$smallerWindowValue))
 
 #########################################################################################################
 #########################################################################################################
