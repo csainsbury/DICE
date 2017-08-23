@@ -40,7 +40,7 @@ cleanHbA1cDataDT[, c("lastA1cDate") := max(dateplustime1) , by=.(LinkId)]
 hba1c_withID <- merge(cleanHbA1cDataDT, id_lookup, by = "LinkId")
 lastA1cFrame <- data.frame(hba1c_withID$LinkId, hba1c_withID$lastA1cDate); colnames(lastA1cFrame) <- c("LinkId", "lastA1cDate")
 
-diagnosisExclusionYears <- 1.5
+diagnosisExclusionYears <- 1.5 # 1.5
 testWindow <- 4
 hba1cWindow <- 3
 exclusionWindowMonths <- 0
@@ -119,7 +119,8 @@ average_hba1c_beforeCourse <- function(timeRelativeToDICE_years, hba1cNumeric) {
 }
 
 diceHbA1cDT[, c("av_hba1c_priorWindow") := average_hba1c_beforeCourse(timeRelativeToDICE_years, hba1cNumeric) , by=.(LinkId)]
-diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 58]
+# diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 0]
+diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 0]
 
 # optional - limit to T1
 diceHbA1cDT <- diceHbA1cDT[diabetes_type == 'Type 1 Diabetes Mellitus']
@@ -309,7 +310,6 @@ compareDiceDafneCharacteristics(diceHbA1cDT)
 
 ## main plot here
 dafneFrame <- interval_difference_variableTime(dafneDT, seq(12, 60, 12), 12, 1, 0)
-
 
 # 
 #   plot(dafneFrame$interval, dafneFrame$median_post, pch = 16, cex = 2, ylim = c(60, 85)); lines(dafneFrame$interval, dafneFrame$median_post)
