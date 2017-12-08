@@ -119,7 +119,7 @@ average_hba1c_beforeCourse <- function(timeRelativeToDICE_years, hba1cNumeric) {
 }
 
 diceHbA1cDT[, c("av_hba1c_priorWindow") := average_hba1c_beforeCourse(timeRelativeToDICE_years, hba1cNumeric) , by=.(LinkId)]
-# diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 0]
+# diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 58]
 diceHbA1cDT <- diceHbA1cDT[av_hba1c_priorWindow >= 0]
 
 # optional - limit to T1
@@ -370,6 +370,10 @@ variabilityDT <- diceHbA1cDT[Course == 'dice']
 variabilityDT <- diceHbA1cDT[Course == 'dafne']
 
 variabilityWindowYears <- 5
+
+##### for revision 081217. pull in all demographic data to extract sex and ethnicity data
+demogALL_all<-read.csv("~/R/GlCoSy/SDsource/demogALL.txt", quote = "", stringsAsFactors = F)
+variabilityDT_demographicMerge <- merge(variabilityDT, demogALL_all, by.x = "LinkId", by.y = "LinkId")
 
 # remove those on a pump within the variaiblity window, or those pregnant within the window
 # variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & (courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
