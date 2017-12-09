@@ -373,7 +373,26 @@ variabilityWindowYears <- 5
 
 ##### for revision 081217. pull in all demographic data to extract sex and ethnicity data
 demogALL_all<-read.csv("~/R/GlCoSy/SDsource/demogALL.txt", quote = "", stringsAsFactors = F)
-variabilityDT_demographicMerge <- merge(variabilityDT, demogALL_all, by.x = "LinkId", by.y = "LinkId")
+demogALL_all$LinkId_numeric <- as.numeric(demogALL_all$LinkId)
+variabilityDT_demographicMerge <- merge(variabilityDT, demogALL_all, by.x = "LinkId", by.y = "LinkId_numeric")
+diceHbA1cDT[, c("singleRowFlag") := ifelse(dateplustime1 == min(dateplustime1),1 , 0) , by=.(LinkId)]
+
+variabilityDT_demographicMerge[, c("N") := seq(1, .N, 1), by = .(LinkId)]
+variabilityDT_demographicMerge <- variabilityDT_demographicMerge[N == 1]
+
+sexTable <- as.data.frame(table(variabilityDT_demographicMerge$CurrentGender_Mapped))
+ethnicityTable <- as.data.frame(table(variabilityDT_demographicMerge$Ethnicity_Mapped))
+
+# time course of courses:
+max(variabilityDT$DICE_unix) - min(variabilityDT$DICE_unix)
+
+# start
+variabilityDT[DICE_unix == min(variabilityDT$DICE_unix)]
+# end
+variabilityDT[DICE_unix == max(variabilityDT$DICE_unix)]
+
+
+
 
 # remove those on a pump within the variaiblity window, or those pregnant within the window
 # variabilityDT <- variabilityDT[(courseToPump == 0 | courseToPump > variabilityWindowYears) & (courseToDelivery == 0 |  courseToDelivery > variabilityWindowYears)]
